@@ -15,6 +15,11 @@ function faceAt(centreX: number, crownY = 300, headHeight = 400): FaceGeometry {
 
 const RATIO = 413 / 531
 
+// within a pixel: the box is rounded to whole pixels
+function expectTopMargin(crownY: number, box: { y: number; height: number }) {
+  expect(Math.abs(crownY - box.y - 0.1 * box.height)).toBeLessThanOrEqual(1)
+}
+
 describe('cropBox', () => {
   it('sizes the crop so the head fills 65% of its height', () => {
     const box = cropBox(faceAt(1000), 2000, 2000, RATIO)
@@ -29,34 +34,47 @@ describe('cropBox', () => {
 
   it('leaves 10% of the crop height above the crown', () => {
     const box = cropBox(faceAt(1000), 2000, 2000, RATIO)
-    // within a pixel: the box is rounded to whole pixels
-    expect(Math.abs(300 - box.y - 0.1 * box.height)).toBeLessThanOrEqual(1)
+    expectTopMargin(300, box)
   })
 
-  it('shrinks to fit when the ideal crop is larger than the photo, keeping the ratio', () => {
+  it('extends above the image when the head is near the top, keeping full size and margin', () => {
+    const box = cropBox(faceAt(1000, 20), 2000, 2000, RATIO)
+    expect(box.y).toBeLessThan(0)
+    expect(box.height).toBe(615)
+    expectTopMargin(20, box)
+  })
+
+  it('never extends below the image: shrinks instead, keeping the margin and the ratio', () => {
+    // ideal height 769, but only 650 px exist below the crown
     const box = cropBox(faceAt(300, 50, 500), 600, 700, RATIO)
-    expect(box.height).toBeLessThanOrEqual(700)
-    expect(box.width).toBeLessThanOrEqual(600)
+    expect(box.y + box.height).toBeLessThanOrEqual(700)
+    expect(box.height).toBe(722) // 650 / 0.9
+    expectTopMargin(50, box)
     expect(box.width / box.height).toBeCloseTo(RATIO, 2)
   })
 
-  it('slides back inside when the face is near an edge', () => {
+  it('slides sideways to stay inside when the crop fits the width', () => {
     const left = cropBox(faceAt(100), 2000, 2000, RATIO)
     expect(left.x).toBe(0)
     const right = cropBox(faceAt(1950), 2000, 2000, RATIO)
     expect(right.x + right.width).toBeLessThanOrEqual(2000)
-    const high = cropBox(faceAt(1000, 20), 2000, 2000, RATIO)
-    expect(high.y).toBe(0)
   })
 
-  it('never returns a box outside the image', () => {
+  it('stays centred and extends past both sides when the crop is wider than the photo', () => {
+    const box = cropBox(faceAt(200), 400, 2000, RATIO) // 478 px wide, photo is 400
+    expect(box.x).toBeLessThan(0)
+    expect(box.x + box.width).toBeGreaterThan(400)
+    expect(box.x + box.width / 2).toBeCloseTo(200, 0)
+  })
+
+  it('holds its rules for any face position', () => {
     for (const centreX of [0, 137, 999.5, 1999]) {
       for (const crownY of [0, 250.3, 1500]) {
         const box = cropBox(faceAt(centreX, crownY), 2000, 2000, RATIO)
-        expect(box.x).toBeGreaterThanOrEqual(0)
-        expect(box.y).toBeGreaterThanOrEqual(0)
-        expect(box.x + box.width).toBeLessThanOrEqual(2000)
         expect(box.y + box.height).toBeLessThanOrEqual(2000)
+        expect(box.x).toBeGreaterThanOrEqual(0)
+        expect(box.x + box.width).toBeLessThanOrEqual(2000)
+        expect(box.width / box.height).toBeCloseTo(RATIO, 2)
       }
     }
   })

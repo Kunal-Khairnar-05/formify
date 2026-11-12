@@ -23,6 +23,8 @@ export interface Processed {
     final: ImageData
     /** null when the spec's size limit cannot be met. */
     exported: Exported | null
+    /** Things about the source photo that may get the result rejected. */
+    warnings: string[]
   }
   timingsMs: Record<string, number>
 }
@@ -62,11 +64,28 @@ export async function processPhoto(file: Blob, spec: Spec): Promise<Processed> {
   }
   const box = cropBox(face, image.width, image.height, spec.widthPx / spec.heightPx)
   const pixels = composite(image, mask, spec.background)
-  const final = await cropAndResize(pixels, box, spec.widthPx, spec.heightPx)
+  const final = await cropAndResize(pixels, box, spec.widthPx, spec.heightPx, spec.background)
   lap('mask, crop, resize')
+
+  const warnings: string[] = []
+  if (box.width < spec.widthPx) {
+    warnings.push(
+      `Low resolution: the crop is ${box.width} x ${box.height} px but the form needs ` +
+        `${spec.widthPx} x ${spec.heightPx} px, so the result is enlarged and will look soft.`,
+    )
+  }
+  if (face.crown.y === 0) {
+    warnings.push('The top of the head is cut off in this photo.')
+  }
 
   const exported = await exportJpeg(final, spec)
   lap('encode')
 
-  return { image, turns, faceCount: 1, stages: { face, mask, box, final, exported }, timingsMs }
+  return {
+    image,
+    turns,
+    faceCount: 1,
+    stages: { face, mask, box, final, exported, warnings },
+    timingsMs,
+  }
 }
