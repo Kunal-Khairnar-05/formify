@@ -12,11 +12,13 @@ function App() {
   const finalRef = useRef<HTMLCanvasElement>(null)
   const [info, setInfo] = useState('Choose a photo.')
   const [resultLine, setResultLine] = useState('')
+  const [warnings, setWarnings] = useState<string[]>([])
   const [download, setDownload] = useState<string | null>(null)
 
   async function onFile(file: File | undefined) {
     if (!file) return
     setResultLine('')
+    setWarnings([])
     setDownload((previous) => {
       if (previous) URL.revokeObjectURL(previous)
       return null
@@ -53,6 +55,7 @@ function App() {
         return
       }
       const { face, mask, box, final, exported } = stages
+      setWarnings(stages.warnings)
 
       // crop box, eye line, crown-to-chin line
       ctx.lineWidth = 4
@@ -118,6 +121,11 @@ function App() {
       <p className="mt-3 text-sm text-neutral-600">{info}</p>
       <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
       {resultLine && <p className="mt-3 font-mono text-sm">{resultLine}</p>}
+      {warnings.map((warning) => (
+        <p key={warning} className="mt-2 rounded bg-amber-100 px-3 py-2 text-sm text-amber-900">
+          {warning}
+        </p>
+      ))}
       {download && (
         <a
           className="mt-3 inline-block rounded bg-blue-600 px-4 py-2 font-medium text-white"
