@@ -1,14 +1,16 @@
 import { useRef, useState } from 'react'
 import { composite } from './pipeline/composite'
 import { cropBox } from './pipeline/crop'
+import { exportJpeg } from './pipeline/exportJpeg'
 import { faceGeometry } from './pipeline/faceGeometry'
 import { detectFaces } from './pipeline/landmarks'
 import { loadImage } from './pipeline/loadImage'
 import { cropAndResize } from './pipeline/resize'
 import { segment } from './pipeline/segment'
+import type { Spec } from './pipeline/types'
 
-// Day 1 target: 3.5 x 4.5 cm at 300 DPI
-const TARGET = { width: 413, height: 531 }
+// Day 1 spec: 3.5 x 4.5 cm at 300 DPI, at most 50 KB, white background
+const SPEC: Spec = { widthPx: 413, heightPx: 531, maxKb: 50, format: 'jpg', background: '#ffffff' }
 
 // Day 1 debug page: shows each pipeline stage as it is built. Replaced by the real UI later.
 function App() {
@@ -17,9 +19,16 @@ function App() {
   const resultRef = useRef<HTMLCanvasElement>(null)
   const finalRef = useRef<HTMLCanvasElement>(null)
   const [info, setInfo] = useState('Choose a photo.')
+  const [resultLine, setResultLine] = useState('')
+  const [download, setDownload] = useState<string | null>(null)
 
   async function onFile(file: File | undefined) {
     if (!file) return
+    setResultLine('')
+    setDownload((previous) => {
+      if (previous) URL.revokeObjectURL(previous)
+      return null
+    })
     try {
       const started = performance.now()
       const image = await loadImage(file)
@@ -70,7 +79,7 @@ function App() {
       }
       maskCanvas.getContext('2d')!.putImageData(maskImage, 0, 0)
 
-      const result = composite(image, mask, '#ffffff')
+      const result = composite(image, mask, SPEC.background)
       const resultCanvas = resultRef.current!
       resultCanvas.width = result.width
       resultCanvas.height = result.height
@@ -80,16 +89,33 @@ function App() {
       const finalCanvas = finalRef.current!
       if (faces.length === 1) {
         const face = faceGeometry(faces[0], image.width, image.height)
-        const box = cropBox(face, image.width, image.height, TARGET.width / TARGET.height)
+        const box = cropBox(face, image.width, image.height, SPEC.widthPx / SPEC.heightPx)
         ctx.lineWidth = 4
         ctx.strokeStyle = '#ffffff'
         ctx.strokeRect(box.x, box.y, box.width, box.height)
 
-        const final = await cropAndResize(result, box, TARGET.width, TARGET.height)
+        const final = await cropAndResize(result, box, SPEC.widthPx, SPEC.heightPx)
         finalCanvas.width = final.width
         finalCanvas.height = final.height
         finalCanvas.getContext('2d')!.putImageData(final, 0, 0)
         cropNote = `crop ${box.width} x ${box.height} at (${box.x}, ${box.y}) -> ${final.width} x ${final.height} px`
+
+        const exported = await exportJpeg(final, SPEC)
+        if (!exported) {
+          setResultLine(`Cannot fit ${SPEC.widthPx} x ${SPEC.heightPx} px into ${SPEC.maxKb} KB at readable quality.`)
+        } else {
+          const { bytes, quality, measured, problems } = exported
+          const line =
+            `${(measured.bytes / 1000).toFixed(1)} KB (limit: max ${SPEC.maxKb} KB) | ` +
+            `${measured.widthPx} x ${measured.heightPx} px | JPG | quality ${quality}`
+          if (problems.length > 0) {
+            setResultLine(`${line} | NOT VALID: ${problems.join('; ')}`)
+          } else {
+            setResultLine(line)
+            // copy into a fresh buffer: Blob does not accept a view over a shared one
+            setDownload(URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/jpeg' })))
+          }
+        }
       } else {
         finalCanvas.width = 0
         finalCanvas.height = 0
@@ -119,6 +145,16 @@ function App() {
       <canvas ref={maskRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
       <canvas ref={resultRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
       <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
+      {resultLine && <p className="mt-3 font-mono text-sm">{resultLine}</p>}
+      {download && (
+        <a
+          className="mt-3 inline-block rounded bg-blue-600 px-4 py-2 font-medium text-white"
+          href={download}
+          download="formify-photo.jpg"
+        >
+          Download
+        </a>
+      )}
     </main>
   )
 }
