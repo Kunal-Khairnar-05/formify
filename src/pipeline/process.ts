@@ -2,12 +2,18 @@ import { composite } from './composite'
 import { cropBox } from './crop'
 import { exportJpeg, type Exported } from './exportJpeg'
 import { faceGeometry } from './faceGeometry'
+import { dilate, limitTo } from './gate'
 import { loadImage } from './loadImage'
 import { hairTop, keepConnected, sharpenMask } from './mask'
+import { matte } from './matte'
 import { detectUpright } from './orient'
 import { cropAndResize } from './resize'
 import { segment } from './segment'
 import type { FaceGeometry, Rect, Spec } from './types'
+
+// how far the "who" mask is grown before it limits the matte, as a fraction of image width;
+// wide enough to keep loose hair, narrow enough to exclude a neighbour
+const GATE_GROWTH = 0.015
 
 export interface Processed {
   /** The photo after loading and turning upright. */
@@ -50,12 +56,19 @@ export async function processPhoto(file: Blob, spec: Spec): Promise<Processed> {
   const rawMask = await segment(image)
   lap('segment')
 
-  // drop the haze, then anything not attached to this person
+  // who: drop the haze, then anything not attached to this person
   const faceCentre = {
     x: (meshFace.leftEye.x + meshFace.rightEye.x) / 2,
     y: (meshFace.leftEye.y + meshFace.chin.y) / 2,
   }
-  const mask = keepConnected(sharpenMask(rawMask), image.width, image.height, faceCentre)
+  const who = keepConnected(sharpenMask(rawMask), image.width, image.height, faceCentre)
+
+  // where the edge is: MODNet's soft matte, which keeps hair detail but also every
+  // other person in the frame, so it is limited to a slightly grown copy of "who"
+  const alpha = await matte(image)
+  lap('matte')
+  const gate = dilate(who, image.width, image.height, Math.round(image.width * GATE_GROWTH))
+  const mask = limitTo(alpha, gate)
 
   // the mesh stops at the hairline; the mask knows where the hair really ends
   const face: FaceGeometry = {

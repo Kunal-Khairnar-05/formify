@@ -29,3 +29,6 @@ public/ort
 
 # personal test photos, never committed
 .local
+
+# downloaded and checksummed by scripts/fetch-models.mjs
+public/models/modnet.onnx
