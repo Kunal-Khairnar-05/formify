@@ -1,15 +1,21 @@
 import { useRef, useState } from 'react'
 import { composite } from './pipeline/composite'
+import { cropBox } from './pipeline/crop'
 import { faceGeometry } from './pipeline/faceGeometry'
 import { detectFaces } from './pipeline/landmarks'
 import { loadImage } from './pipeline/loadImage'
+import { cropAndResize } from './pipeline/resize'
 import { segment } from './pipeline/segment'
+
+// Day 1 target: 3.5 x 4.5 cm at 300 DPI
+const TARGET = { width: 413, height: 531 }
 
 // Day 1 debug page: shows each pipeline stage as it is built. Replaced by the real UI later.
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
   const resultRef = useRef<HTMLCanvasElement>(null)
+  const finalRef = useRef<HTMLCanvasElement>(null)
   const [info, setInfo] = useState('Choose a photo.')
 
   async function onFile(file: File | undefined) {
@@ -70,9 +76,28 @@ function App() {
       resultCanvas.height = result.height
       resultCanvas.getContext('2d')!.putImageData(result, 0, 0)
 
+      let cropNote = 'no crop (needs exactly one face)'
+      const finalCanvas = finalRef.current!
+      if (faces.length === 1) {
+        const face = faceGeometry(faces[0], image.width, image.height)
+        const box = cropBox(face, image.width, image.height, TARGET.width / TARGET.height)
+        ctx.lineWidth = 4
+        ctx.strokeStyle = '#ffffff'
+        ctx.strokeRect(box.x, box.y, box.width, box.height)
+
+        const final = await cropAndResize(result, box, TARGET.width, TARGET.height)
+        finalCanvas.width = final.width
+        finalCanvas.height = final.height
+        finalCanvas.getContext('2d')!.putImageData(final, 0, 0)
+        cropNote = `crop ${box.width} x ${box.height} at (${box.x}, ${box.y}) -> ${final.width} x ${final.height} px`
+      } else {
+        finalCanvas.width = 0
+        finalCanvas.height = 0
+      }
+
       setInfo(
         `${file.name}: ${(file.size / 1000).toFixed(0)} KB file -> ${image.width} x ${image.height} px ` +
-          `in ${loadedMs} ms, ${faces.length} face(s) found, mask in ${segmentMs} ms`,
+          `in ${loadedMs} ms, ${faces.length} face(s) found, mask in ${segmentMs} ms, ${cropNote}`,
       )
     } catch (error) {
       setInfo(`Failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -93,6 +118,7 @@ function App() {
       <canvas ref={canvasRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
       <canvas ref={maskRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
       <canvas ref={resultRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
+      <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
     </main>
   )
 }
