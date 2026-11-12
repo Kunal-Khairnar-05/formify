@@ -2,7 +2,7 @@ import { composite } from './composite'
 import { cropBox } from './crop'
 import { exportJpeg, type Exported } from './exportJpeg'
 import { faceGeometry } from './faceGeometry'
-import { dilate, limitTo } from './gate'
+import { dilate, limitTo, softOutside } from './gate'
 import { loadImage } from './loadImage'
 import { hairTop, keepConnected, sharpenMask } from './mask'
 import { matte } from './matte'
@@ -68,7 +68,9 @@ export async function processPhoto(file: Blob, spec: Spec): Promise<Processed> {
   const alpha = await matte(image)
   lap('matte')
   const gate = dilate(who, image.width, image.height, Math.round(image.width * GATE_GROWTH))
-  const mask = limitTo(alpha, gate)
+  // in the grown band only soft matte (loose hair) is wanted; anything solid out there
+  // is a neighbour or an object touching the person
+  const mask = softOutside(limitTo(alpha, gate), who, image.width, image.height)
 
   // the mesh stops at the hairline; the mask knows where the hair really ends
   const face: FaceGeometry = {

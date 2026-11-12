@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dilate, limitTo } from './gate'
+import { dilate, limitTo, softOutside } from './gate'
 
 /** Build a mask from rows of digits: '0' = 0, '9' = 1, other digits in between. */
 function grid(rows: string[]): { mask: Float32Array; width: number; height: number } {
@@ -76,5 +76,42 @@ describe('limitTo', () => {
   it('never adds anything the matte did not have', () => {
     const out = limitTo(new Float32Array([0, 0]), new Float32Array([1, 1]))
     expect(Array.from(out)).toEqual([0, 0])
+  })
+})
+
+describe('softOutside', () => {
+  // one row is enough: 9 = solid, 5 = soft, 0 = nothing
+  const run = (mask: string, who: string, margin: number) => {
+    const m = grid([mask])
+    return digits(softOutside(m.mask, grid([who]).mask, m.width, m.height, margin), m.width)[0]
+  }
+
+  it('keeps soft values outside who and removes solid ones', () => {
+    //            mask        who
+    expect(run('9950990', '9900000', 0)).toBe('9950000')
+  })
+
+  it('also removes soft values within the margin of a removed solid pixel', () => {
+    expect(run('9905990', '9900000', 1)).toBe('9900000')
+  })
+
+  it('leaves soft values alone when they are farther away than the margin', () => {
+    expect(run('9950099', '9900000', 1)).toBe('9950000')
+  })
+
+  it('changes nothing inside who, even next to a removed pixel', () => {
+    expect(run('9999', '9900', 1)).toBe('9900')
+    expect(run('999', '999', 4)).toBe('999')
+  })
+
+  it('treats a value just under solid as soft', () => {
+    expect(run('980', '900', 0)).toBe('980')
+  })
+
+  it('returns a new array and leaves the input alone', () => {
+    const m = grid(['990'])
+    const out = softOutside(m.mask, grid(['900']).mask, m.width, m.height, 0)
+    expect(out).not.toBe(m.mask)
+    expect(digits(m.mask, m.width)[0]).toBe('990')
   })
 })
