@@ -36,3 +36,33 @@ export function limitTo(matte: Float32Array, gate: Float32Array): Float32Array {
   for (let i = 0; i < matte.length; i++) out[i] = Math.min(matte[i], gate[i])
   return out
 }
+
+// matte values above this count as fully opaque
+const SOLID = 0.9
+
+/**
+ * Outside `who`, keep only the soft part of the mask: remove solid pixels
+ * and everything within `margin` pixels of them. Inside `who` nothing changes.
+ */
+export function softOutside(
+  mask: Float32Array,
+  who: Float32Array,
+  width: number,
+  height: number,
+  margin = 4,
+): Float32Array {
+  // solid pixels that the "who" mask does not claim: a neighbour, or an object touching the person
+  const intruders = new Float32Array(mask.length)
+  for (let i = 0; i < mask.length; i++) {
+    if (who[i] < 0.5 && mask[i] > SOLID) intruders[i] = 1
+  }
+
+  // their soft outline has to go too, so widen them by the margin
+  const blocked = dilate(intruders, width, height, margin)
+
+  const out = new Float32Array(mask.length)
+  for (let i = 0; i < mask.length; i++) {
+    out[i] = who[i] < 0.5 && blocked[i] > 0 ? 0 : mask[i]
+  }
+  return out
+}
