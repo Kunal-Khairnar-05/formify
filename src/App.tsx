@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { composite } from './pipeline/composite'
 import { faceGeometry } from './pipeline/faceGeometry'
 import { detectFaces } from './pipeline/landmarks'
 import { loadImage } from './pipeline/loadImage'
@@ -8,6 +9,7 @@ import { segment } from './pipeline/segment'
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
+  const resultRef = useRef<HTMLCanvasElement>(null)
   const [info, setInfo] = useState('Choose a photo.')
 
   async function onFile(file: File | undefined) {
@@ -62,6 +64,12 @@ function App() {
       }
       maskCanvas.getContext('2d')!.putImageData(maskImage, 0, 0)
 
+      const result = composite(image, mask, '#ffffff')
+      const resultCanvas = resultRef.current!
+      resultCanvas.width = result.width
+      resultCanvas.height = result.height
+      resultCanvas.getContext('2d')!.putImageData(result, 0, 0)
+
       setInfo(
         `${file.name}: ${(file.size / 1000).toFixed(0)} KB file -> ${image.width} x ${image.height} px ` +
           `in ${loadedMs} ms, ${faces.length} face(s) found, mask in ${segmentMs} ms`,
@@ -84,6 +92,7 @@ function App() {
       <p className="mt-3 text-sm text-neutral-600">{info}</p>
       <canvas ref={canvasRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
       <canvas ref={maskRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
+      <canvas ref={resultRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
     </main>
   )
 }
