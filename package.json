@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "predev": "node scripts/copy-wasm.mjs",
-    "prebuild": "node scripts/copy-wasm.mjs"
+    "predev": "node scripts/copy-wasm.mjs && node scripts/fetch-models.mjs",
+    "prebuild": "node scripts/copy-wasm.mjs && node scripts/fetch-models.mjs"
   },
   "dependencies": {
     "@jsquash/jpeg": "1.6.0",
