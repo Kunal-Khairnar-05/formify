@@ -136,10 +136,11 @@ function App() {
         )
         return
       }
-      const { bytes, quality, measured, problems } = exported
+      const { bytes, quality, paddedBytes, measured, problems } = exported
       const line =
         `${(measured.bytes / 1000).toFixed(1)} KB (limit: ${limitText(spec)}) | ` +
-        `${measured.widthPx} x ${measured.heightPx} px | JPG | quality ${quality}`
+        `${measured.widthPx} x ${measured.heightPx} px | JPG | quality ${quality}` +
+        (paddedBytes > 0 ? ` | padded by ${(paddedBytes / 1000).toFixed(1)} KB to reach the minimum` : '')
       if (problems.length > 0) {
         setResultLine(`${line} | NOT VALID: ${problems.join('; ')}`)
       } else {
