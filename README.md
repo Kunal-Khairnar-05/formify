@@ -3,7 +3,7 @@
 Turns a selfie and a signature photo into files that meet an application form's exact photo rules.
 Everything runs in the browser; the photo never leaves the device.
 
-Status: Day 1, pipeline under construction.
+Live at https://formify-five-rust.vercel.app/
 
 ## Run
 
@@ -29,6 +29,15 @@ Without them the app still works, on one thread and more slowly.
 names carry a hash) and no caching for the service worker (so a new release is noticed).
 To deploy there: import the repository in Vercel and accept the detected settings. The
 build downloads one model (26 MB) and checks it against its checksum.
+
+### The counter
+
+`api/count.ts` is the site's one server function: it counts how many pictures have been made.
+It needs a Redis database with a REST interface. On Vercel: Storage, then add Upstash for
+Redis and connect it to the project, which sets `KV_REST_API_URL` and `KV_REST_API_TOKEN`
+(`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are read as well). Until then the
+function answers 503 and the page shows no count. Only the kind of picture is sent; the
+visitor's address is used, hashed, for one minute to stop a script inflating the number.
 
 ## Test
 
