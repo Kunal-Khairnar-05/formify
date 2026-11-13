@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChevronIcon } from './icons'
 import type { SpecFields } from './spec/fields'
 import { parseInstructions } from './spec/instructions'
 import type { Resolved, Unit } from './spec/units'
@@ -10,17 +11,38 @@ const UNITS: { value: Unit; label: string }[] = [
   { value: 'px', label: 'px' },
 ]
 
-const box = 'nm-field mt-1 block'
-const label = 'block text-sm font-medium'
+/** Common sizes, named by the size alone: which form wants which is for the user to check. */
+const PRESETS: Record<'photo' | 'signature', { label: string; fields: Partial<SpecFields> }[]> = {
+  photo: [
+    { label: '3.5 x 4.5 cm', fields: { width: '3.5', height: '4.5', unit: 'cm' } },
+    { label: '2 x 2 inch', fields: { width: '2', height: '2', unit: 'in' } },
+    { label: '200 x 230 px', fields: { width: '200', height: '230', unit: 'px' } },
+  ],
+  signature: [
+    { label: '140 x 60 px', fields: { width: '140', height: '60', unit: 'px' } },
+    { label: '3.5 x 1.5 cm', fields: { width: '3.5', height: '1.5', unit: 'cm' } },
+    { label: '6 x 2 cm', fields: { width: '6', height: '2', unit: 'cm' } },
+  ],
+}
+
+const BACKGROUNDS = [
+  { label: 'White', value: '#ffffff' },
+  { label: 'Light blue', value: '#dbeafe' },
+  { label: 'Light grey', value: '#e5e7eb' },
+]
+
+const label = 'flex flex-col gap-1.5 text-sm font-semibold'
+const group = 'text-soft text-xs font-bold tracking-wide'
 
 interface Props {
+  kind: 'photo' | 'signature'
   fields: SpecFields
   resolved: Resolved
   onChange: (fields: SpecFields) => void
 }
 
 /** What the form asks for: size, unit, DPI, file size limits and background colour. */
-export function SpecForm({ fields, resolved, onChange }: Props) {
+export function SpecForm({ kind, fields, resolved, onChange }: Props) {
   const set = (patch: Partial<SpecFields>) => onChange({ ...fields, ...patch })
   const [pasted, setPasted] = useState('')
   // null until "Fill from text" has been pressed
@@ -32,125 +54,194 @@ export function SpecForm({ fields, resolved, onChange }: Props) {
     set(parsed.fields)
   }
 
+  const unitLabel = UNITS.find((unit) => unit.value === fields.unit)!.label
+  const isPreset = (preset: Partial<SpecFields>) =>
+    preset.width === fields.width && preset.height === fields.height && preset.unit === fields.unit
+
   return (
-    <fieldset className="min-w-0 text-sm">
-      <legend className="mb-3 text-base font-semibold">What the form asks for</legend>
-      <label className={label}>
-        Paste the portal's instructions (optional)
+    <div className="flex min-w-0 flex-col gap-5">
+      <details className="nm-inset p-3">
+        <summary className="flex items-center justify-between gap-2 rounded-md text-sm font-semibold">
+          Paste the portal's instructions
+          <span className="chevron">
+            <ChevronIcon size={18} />
+          </span>
+        </summary>
+        <p className="text-soft mt-2 text-xs">
+          Paste the text and the boxes below are filled in for you. Always check them afterwards.
+        </p>
         <textarea
           id="spec-paste"
-          className={`${box} h-20 resize-y`}
-          placeholder="e.g. Dimensions 200 x 230 pixels, size between 20 KB and 50 KB"
+          aria-label="The portal's instructions"
+          className="nm-field mt-3 block h-24 resize-y !items-start !text-sm"
+          placeholder="Dimensions 200 x 230 pixels, size between 20 KB and 50 KB"
           value={pasted}
           onChange={(e) => setPasted(e.target.value)}
         />
-      </label>
-      <button
-        id="spec-fill"
-        className="nm-btn mt-3"
-        disabled={pasted.trim() === ''}
-        onClick={fillFromText}
-      >
-        Fill from text
-      </button>
-      {found && (
-        <p id="spec-found" className="mt-3">
-          {found.length > 0
-            ? `Found: ${found.join(', ')}. Check the boxes below against the portal.`
-            : 'Nothing recognised in that text. Fill in the boxes below by hand.'}
-        </p>
-      )}
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <label className={label}>
-          Width
-          <input
-            id="spec-width"
-            className={box}
-            inputMode="decimal"
-            value={fields.width}
-            onChange={(e) => set({ width: e.target.value })}
-          />
-        </label>
-        <label className={label}>
-          Height
-          <input
-            id="spec-height"
-            className={box}
-            inputMode="decimal"
-            value={fields.height}
-            onChange={(e) => set({ height: e.target.value })}
-          />
-        </label>
-        <label className={label}>
-          Unit
-          <select
-            id="spec-unit"
-            className={box}
-            value={fields.unit}
-            onChange={(e) => set({ unit: e.target.value as Unit })}
-          >
-            {UNITS.map((unit) => (
-              <option key={unit.value} value={unit.value}>
-                {unit.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={label}>
-          DPI
-          <input
-            id="spec-dpi"
-            className={box}
-            inputMode="numeric"
-            disabled={fields.unit === 'px'}
-            value={fields.dpi}
-            onChange={(e) => set({ dpi: e.target.value })}
-          />
-        </label>
-        <label className={label}>
-          Min KB
-          <input
-            id="spec-min-kb"
-            className={box}
-            inputMode="decimal"
-            placeholder="none"
-            value={fields.minKb}
-            onChange={(e) => set({ minKb: e.target.value })}
-          />
-        </label>
-        <label className={label}>
-          Max KB
-          <input
-            id="spec-max-kb"
-            className={box}
-            inputMode="decimal"
-            placeholder="none"
-            value={fields.maxKb}
-            onChange={(e) => set({ maxKb: e.target.value })}
-          />
-        </label>
-        <label className={label}>
-          Background
-          <input
-            id="spec-background"
-            className="nm-field mt-1 block h-9 cursor-pointer !p-1"
-            type="color"
-            value={fields.background}
-            onChange={(e) => set({ background: e.target.value })}
-          />
-        </label>
+        <button
+          id="spec-fill"
+          className="nm-btn mt-3"
+          disabled={pasted.trim() === ''}
+          onClick={fillFromText}
+        >
+          Fill from text
+        </button>
+        {found && (
+          <p id="spec-found" className="mt-3 text-sm font-medium">
+            {found.length > 0
+              ? `Found: ${found.join(', ')}. Check the boxes below against the portal.`
+              : 'Nothing recognised in that text. Fill in the boxes below by hand.'}
+          </p>
+        )}
+      </details>
+
+      <div className="flex flex-col gap-3">
+        <p className={group}>SIZE</p>
+        <div className="flex flex-wrap gap-2">
+          {PRESETS[kind].map((preset) => (
+            <button
+              key={preset.label}
+              className={`nm-btn !min-h-9 !rounded-full !px-3 !text-xs ${isPreset(preset.fields) ? 'nm-btn-primary' : ''}`}
+              aria-pressed={isPreset(preset.fields)}
+              onClick={() => set(preset.fields)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={label}>
+            Width
+            <span className="nm-field">
+              <input
+                id="spec-width"
+                inputMode="decimal"
+                value={fields.width}
+                onChange={(e) => set({ width: e.target.value })}
+              />
+              <span className="unit">{unitLabel}</span>
+            </span>
+          </label>
+          <label className={label}>
+            Height
+            <span className="nm-field">
+              <input
+                id="spec-height"
+                inputMode="decimal"
+                value={fields.height}
+                onChange={(e) => set({ height: e.target.value })}
+              />
+              <span className="unit">{unitLabel}</span>
+            </span>
+          </label>
+          <label className={label}>
+            Unit
+            <span className="nm-field relative">
+              <select
+                id="spec-unit"
+                className="cursor-pointer appearance-none pr-6"
+                value={fields.unit}
+                onChange={(e) => set({ unit: e.target.value as Unit })}
+              >
+                {UNITS.map((unit) => (
+                  <option key={unit.value} value={unit.value}>
+                    {unit.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3">
+                <ChevronIcon size={16} />
+              </span>
+            </span>
+          </label>
+          <label className={label}>
+            Print quality
+            <span className="nm-field">
+              <input
+                id="spec-dpi"
+                inputMode="numeric"
+                disabled={fields.unit === 'px'}
+                value={fields.dpi}
+                onChange={(e) => set({ dpi: e.target.value })}
+              />
+              <span className="unit">DPI</span>
+            </span>
+          </label>
+        </div>
       </div>
+
+      <div className="flex flex-col gap-3">
+        <p className={group}>FILE SIZE</p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={label}>
+            At least
+            <span className="nm-field">
+              <input
+                id="spec-min-kb"
+                inputMode="decimal"
+                placeholder="Any"
+                value={fields.minKb}
+                onChange={(e) => set({ minKb: e.target.value })}
+              />
+              <span className="unit">KB</span>
+            </span>
+          </label>
+          <label className={label}>
+            At most
+            <span className="nm-field">
+              <input
+                id="spec-max-kb"
+                inputMode="decimal"
+                placeholder="Any"
+                value={fields.maxKb}
+                onChange={(e) => set({ maxKb: e.target.value })}
+              />
+              <span className="unit">KB</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <p className={group}>BACKGROUND</p>
+        <div className="flex items-center gap-3">
+          {BACKGROUNDS.map((colour) => (
+            <button
+              key={colour.value}
+              className="nm-swatch"
+              style={{ background: colour.value }}
+              aria-label={colour.label}
+              title={colour.label}
+              aria-pressed={fields.background.toLowerCase() === colour.value}
+              onClick={() => set({ background: colour.value })}
+            />
+          ))}
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            <input
+              id="spec-background"
+              className="nm-swatch cursor-pointer overflow-hidden p-0"
+              type="color"
+              aria-label="Another colour"
+              value={fields.background}
+              onChange={(e) => set({ background: e.target.value })}
+            />
+            Other
+          </label>
+        </div>
+      </div>
+
       {resolved.ok ? (
-        <p id="spec-summary" className="mt-4 font-medium">
-          Output: {resolved.spec.widthPx} x {resolved.spec.heightPx} px, JPG
+        <p id="spec-summary" className="nm-inset px-3 py-2.5 text-sm font-semibold">
+          <span className="text-soft font-medium">Your file will be </span>
+          {resolved.spec.widthPx} x {resolved.spec.heightPx} px, JPG
         </p>
       ) : (
-        <ul id="spec-errors" className="nm-danger mt-4 list-disc pl-5 font-medium">
+        <ul id="spec-errors" className="nm-danger list-disc pl-5 text-sm font-medium">
           {resolved.errors.map((error) => (
             <li key={error}>{error}</li>
           ))}
         </ul>
       )}
-    </fieldset>
+    </div>
   )
 }
