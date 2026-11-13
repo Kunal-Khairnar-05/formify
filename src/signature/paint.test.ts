@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { inkColour, sharpen, thickenBy } from './paint'
+import { inkColour, sharpen, strokeWidth, thickenBy } from './paint'
 
 describe('inkColour', () => {
   it('averages the pixels that are clearly ink', () => {
@@ -18,24 +18,50 @@ describe('inkColour', () => {
   })
 })
 
+describe('strokeWidth', () => {
+  // a level bar `thick` pixels tall across a 60 x 30 picture
+  const bar = (thick: number) => {
+    const mask = new Float32Array(60 * 30)
+    for (let y = 10; y < 10 + thick; y++) mask.fill(1, y * 60 + 5, y * 60 + 55)
+    return strokeWidth(mask, 60, 30)
+  }
+
+  it('measures thin and thick strokes', () => {
+    expect(bar(2)).toBeCloseTo(2, 0)
+    expect(bar(6)).toBeGreaterThan(5)
+    expect(bar(6)).toBeLessThan(7)
+    expect(bar(12)).toBeGreaterThan(9)
+    expect(bar(12)).toBeLessThan(13)
+  })
+
+  it('is 0 for an empty mask', () => {
+    expect(strokeWidth(new Float32Array(100), 10, 10)).toBe(0)
+  })
+})
+
 describe('thickenBy', () => {
   it('leaves the strokes alone when the picture is hardly shrunk', () => {
-    expect(thickenBy(0.5)).toBe(0)
-    expect(thickenBy(1)).toBe(0)
-    expect(thickenBy(1.5)).toBe(0)
+    expect(thickenBy(0.5, 2)).toBe(0)
+    expect(thickenBy(1, 2)).toBe(0)
+    expect(thickenBy(1.5, 2)).toBe(0)
   })
 
   it('thickens more the more the picture is shrunk', () => {
-    expect(thickenBy(4)).toBeGreaterThan(0)
-    expect(thickenBy(8)).toBeGreaterThan(thickenBy(4))
+    expect(thickenBy(4, 2)).toBeGreaterThan(0)
+    expect(thickenBy(8, 2)).toBeGreaterThan(thickenBy(4, 2))
   })
 
   it('keeps a 2 px stroke at about 1.4 px after shrinking', () => {
     for (const shrink of [3, 4, 6, 10]) {
-      const after = (2 + 2 * thickenBy(shrink)) / shrink
+      const after = (2 + 2 * thickenBy(shrink, 2)) / shrink
       expect(after).toBeGreaterThan(1)
       expect(after).toBeLessThan(1.9)
     }
+  })
+
+  it('leaves a stroke alone that is already wide enough', () => {
+    // a marker stroke 14 px wide, shrunk 7 times, is still 2 px
+    expect(thickenBy(7, 14)).toBe(0)
   })
 })
 

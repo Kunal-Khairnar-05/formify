@@ -38,11 +38,35 @@ export function inkColour(
   return count === 0 ? null : [r / count, g / count, b / count]
 }
 
-/** How many pixels to thicken the strokes by, so they survive being shrunk `shrink` times. */
-export function thickenBy(shrink: number): number {
-  // a ballpoint stroke is about 2 px in the working picture; growing by n adds 2n
+/**
+ * How wide the pen strokes are, in pixels: a ballpoint from a distance is about 2, a marker
+ * in a close-up 15 or more. A stroke of length L and width w covers L * w pixels and has
+ * about 2 * L pixels along its two edges, so the width is twice the area over the edge count.
+ */
+export function strokeWidth(mask: Float32Array, width: number, height: number): number {
+  const isInk = (x: number, y: number) =>
+    x >= 0 && x < width && y >= 0 && y < height && mask[y * width + x] > 0.5
+  let area = 0
+  let edge = 0
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!isInk(x, y)) continue
+      area++
+      if (!isInk(x - 1, y) || !isInk(x + 1, y) || !isInk(x, y - 1) || !isInk(x, y + 1)) edge++
+    }
+  }
+  return edge === 0 ? 0 : (2 * area) / edge
+}
+
+/**
+ * How many pixels to thicken strokes of width `stroke` by, so they survive being shrunk
+ * `shrink` times. A stroke that is already wide enough is left alone: thickening it would
+ * close up the loops of the letters.
+ */
+export function thickenBy(shrink: number, stroke: number): number {
+  // growing by n adds 2n to the width
   const needed = MIN_OUTPUT_STROKE * shrink
-  return Math.max(0, Math.round((needed - 2) / 2))
+  return Math.max(0, Math.round((needed - stroke) / 2))
 }
 
 /**
@@ -71,7 +95,7 @@ export async function drawSignature(
   background: string,
 ): Promise<ImageData> {
   const { width, height } = pixels
-  const grow = thickenBy(box.width / outWidth)
+  const grow = thickenBy(box.width / outWidth, strokeWidth(mask, width, height))
   const alpha = grow > 0 ? dilate(mask, width, height, grow) : mask
 
   // the shape of the ink as a grey picture: black ink on white, so it can be resized

@@ -3,6 +3,8 @@
 const DRIFT = 0.004
 // a ruled line is dark along at least this fraction of the width without a break
 const LONG_RUN = 0.08
+// how far a ruled line may bow away from straight in a photo, as a fraction of the width
+const BOW = 0.015
 // on its own row, a piece of line runs at least this far; a pen stroke crossing it does not
 const SHORT_RUN = 0.02
 
@@ -109,6 +111,63 @@ function fitLine(points: [x: number, y: number][]): { slope: number; offset: num
   return { slope, offset: meanY - slope * meanX }
 }
 
+/** A gently curved track: y = bend * x * x + slope * x + offset. */
+interface Track {
+  bend: number
+  slope: number
+  offset: number
+}
+
+const at = (track: Track, x: number) => (track.bend * x + track.slope) * x + track.offset
+
+/**
+ * The curve y = bend * x^2 + slope * x + offset that best fits the points (least squares).
+ * A ruled line is straight on the paper, but the page bows and the lens bends it, so in a
+ * photo it is a shallow curve. Falls back to a straight line when a curve cannot be fitted.
+ */
+function fitCurve(points: [x: number, y: number][]): Track {
+  // x is scaled to about -1..1 around its mean, which keeps the sums well behaved
+  let meanX = 0
+  let span = 0
+  for (const [x] of points) meanX += x
+  meanX /= points.length
+  for (const [x] of points) span = Math.max(span, Math.abs(x - meanX))
+  const straight = { bend: 0, ...fitLine(points) }
+  if (span === 0) return straight
+
+  // sums for the normal equations
+  let s1 = 0
+  let s2 = 0
+  let s3 = 0
+  let s4 = 0
+  let t0 = 0
+  let t1 = 0
+  let t2 = 0
+  for (const [x, y] of points) {
+    const u = (x - meanX) / span
+    s1 += u
+    s2 += u * u
+    s3 += u * u * u
+    s4 += u * u * u * u
+    t0 += y
+    t1 += u * y
+    t2 += u * u * y
+  }
+  const n = points.length
+  // solve [[s4 s3 s2] [s3 s2 s1] [s2 s1 n]] * [a b c] = [t2 t1 t0] by Cramer's rule
+  const det = s4 * (s2 * n - s1 * s1) - s3 * (s3 * n - s1 * s2) + s2 * (s3 * s1 - s2 * s2)
+  if (Math.abs(det) < 1e-9) return straight
+  const a = (t2 * (s2 * n - s1 * s1) - s3 * (t1 * n - s1 * t0) + s2 * (t1 * s1 - s2 * t0)) / det
+  const b = (s4 * (t1 * n - s1 * t0) - t2 * (s3 * n - s1 * s2) + s2 * (s3 * t0 - s2 * t1)) / det
+  const c = (s4 * (s2 * t0 - s1 * t1) - s3 * (s3 * t0 - s2 * t1) + t2 * (s3 * s1 - s2 * s2)) / det
+
+  // back from u = (x - meanX) / span to x
+  const bend = a / (span * span)
+  const slope = b / span - 2 * bend * meanX
+  const offset = c - (b / span) * meanX + bend * meanX * meanX
+  return { bend, slope, offset }
+}
+
 /** Call `each` for every unbroken top-to-bottom run of set pixels: column, first row, row after last. */
 function columnRuns(
   bits: Uint8Array,
@@ -179,9 +238,9 @@ function dropAcross(dark: Float32Array, width: number, height: number, contrast:
   }
   const thickest = (line: number) => Math.ceil(thickness.get(line)! * 1.5) + 1
 
-  // where each line runs: a ruled line is straight, so a straight track is fitted through
-  // the centres of its bare pieces. A stroke that only passes close to the line, like the
-  // bottom of an "o" resting on it, is off the track and is left alone.
+  // where each line runs: a track is fitted through the centres of its bare pieces. A stroke
+  // that only passes close to the line, like the bottom of an "o" resting on it, is off the
+  // track and is left alone.
   const centres = new Map<number, [x: number, y: number][]>()
   columnRuns(isDark, width, height, (x, from, to) => {
     const line = lineOf(x, from, to)
@@ -189,13 +248,19 @@ function dropAcross(dark: Float32Array, width: number, height: number, contrast:
     if (!centres.has(line)) centres.set(line, [])
     centres.get(line)!.push([x, (from + to - 1) / 2])
   })
-  const tracks = new Map<number, { slope: number; offset: number }>()
+  const tracks = new Map<number, Track>()
   for (const [line, points] of centres) {
-    const first = fitLine(points)
-    // fit again without the points that are far off: those are strokes, not the line
+    // fit, then fit again without the points that are far off: those are strokes, not the
+    // line. First a straight line, which strokes cannot pull far, with room for the line's
+    // bow; then the curve itself, twice.
     const reach = Math.max(2, thickness.get(line)!)
-    const near = points.filter(([x, y]) => Math.abs(y - (first.slope * x + first.offset)) <= reach)
-    tracks.set(line, near.length >= 2 ? fitLine(near) : first)
+    let track: Track = { bend: 0, ...fitLine(points) }
+    for (const allowed of [reach + width * BOW, reach, reach]) {
+      const near = points.filter(([x, y]) => Math.abs(y - at(track, x)) <= allowed)
+      if (near.length < 3) break
+      track = fitCurve(near)
+    }
+    tracks.set(line, track)
   }
 
   const out = new Float32Array(dark)
@@ -204,7 +269,7 @@ function dropAcross(dark: Float32Array, width: number, height: number, contrast:
     // taller than the line: a pen stroke on or across it, which is kept whole
     if (line === 0 || to - from > thickest(line)) return
     const track = tracks.get(line)!
-    const off = Math.abs((from + to - 1) / 2 - (track.slope * x + track.offset))
+    const off = Math.abs((from + to - 1) / 2 - at(track, x))
     if (off > thickness.get(line)! / 2 + 1.5) return
     for (let y = from; y < to; y++) {
       if (level[y * width + x] === 1) out[y * width + x] = 0

@@ -68,6 +68,21 @@ describe('dropLines', () => {
     expect(after).toBeLessThan(before * 0.05)
   })
 
+  it('clears a thick line that bows, as a page does in a photo', () => {
+    const p = page()
+    // 4 px thick, 4 px lower at both ends than in the middle
+    for (let x = 0; x < WIDTH; x++) {
+      const u = (x - WIDTH / 2) / (WIDTH / 2)
+      const y = Math.round(80 + 4 * u * u)
+      for (let t = 0; t < 4; t++) p.dark[(y + t) * WIDTH + x] = 0.6
+    }
+    p.writing(50, 150, 30, 60)
+    const out = dropLines(p.dark, WIDTH, HEIGHT, 0.2)
+    // nothing of the line is left, not even its ends
+    expect(count(out, 0, 70, WIDTH, HEIGHT)).toBe(0)
+    expect(count(out, 0, 0, WIDTH, 70)).toBe(count(p.dark, 0, 0, WIDTH, 70))
+  })
+
   it('leaves handwriting alone when there are no lines', () => {
     const p = page()
     p.writing(60, 140, 40, 70)
