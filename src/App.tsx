@@ -24,6 +24,8 @@ import { processSignature } from './signature/process'
 import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from './spec/fields'
 import { measurePicture, type Measured } from './spec/estimate'
 import { badFields, cropCaution, resolveChecked, suggest } from './spec/feasibility'
+import { PortalPicker } from './PortalPicker'
+import { matchPortal } from './spec/portals'
 import { SpecForm } from './SpecForm'
 import { guessTurns, rotateFile } from './upright'
 
@@ -308,6 +310,8 @@ function App() {
   }, [busy])
   const fields = allFields[kind]
   const setFields = (next: SpecFields) => setAllFields({ ...allFields, [kind]: next })
+  // the exam whose details are in both forms as it fills them; none once one is changed by hand
+  const portal = matchPortal(allFields)
   const [preview, setPreview] = useState<string | null>(null)
   // the user's own crop, with the shape it was made for; null means the starting crop
   const [custom, setCustom] = useState<{ aspect?: number; region: Region } | null>(null)
@@ -952,6 +956,14 @@ function App() {
                 !preview && <p className="text-soft text-center text-xs">Add a photo first.</p>
               )}
             </div>
+            <PortalPicker
+              portal={portal}
+              kind={kind}
+              // an exam sets the photo's and the signature's details together
+              onChoose={(chosen) =>
+                setAllFields({ photo: chosen.photo.fields, signature: chosen.signature.fields })
+              }
+            />
             <SpecForm
               kind={kind}
               fields={fields}
