@@ -22,8 +22,10 @@ import { processPhoto, type Quality } from './pipeline/process'
 import type { Rect, Spec } from './pipeline/types'
 import { processSignature } from './signature/process'
 import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from './spec/fields'
-import { cropCaution, resolveChecked } from './spec/feasibility'
+import { measurePicture, type Measured } from './spec/estimate'
+import { cropCaution, resolveChecked, suggest } from './spec/feasibility'
 import { SpecForm } from './SpecForm'
+import { guessTurns, rotateFile } from './upright'
 
 /** What is being made. Each kind has its own pipeline and its own form details. */
 type Kind = 'photo' | 'signature'
@@ -207,30 +209,84 @@ function App() {
   const [lockShape, setLockShape] = useState(true)
   // quarter turns used for the last signature, so Rotate can go one further; null before any
   const [signatureTurns, setSignatureTurns] = useState<number | null>(null)
-  const lastFile = useRef<File | undefined>(undefined)
-  const resolved = resolveChecked(parseFields(fields), kind)
+  // the picture being worked on: the chosen file, or that file turned upright
+  const [picture, setPicture] = useState<{ blob: Blob; name: string; id: number } | null>(null)
+  // numbers each picture shown, so work done for an earlier one is not used for this one
+  const shown = useRef(0)
+  // goes up with every new picture, so slow work on an earlier one can be dropped
+  const pickCount = useRef(0)
+  // true while a new picture is being checked for which way up it is
+  const [orienting, setOrienting] = useState(false)
+  // says so when a picture was turned upright after it was chosen
+  const [turnNote, setTurnNote] = useState('')
+  // what the chosen part of the photo weighs at the output size, and for which request
+  // measured is null when the picture could not be weighed
+  const [weighed, setWeighed] = useState<{ key: string; measured: Measured | null } | null>(null)
+
+  const input = parseFields(fields)
+  // the request on its own decides the output's shape; the photo's weight is added below
+  const shape = resolveChecked(input, kind)
   const current = KINDS.find((entry) => entry.value === kind)!
   const hasResult = summary !== null || failure !== ''
 
   // the crop is held to the output's shape unless the user switches that off
   // a signature is cut to its ink afterwards, so its crop box is always free-form
   const aspect =
-    kind === 'photo' && lockShape && photoSize && resolved.ok
-      ? fractionAspect(
-          resolved.spec.widthPx / resolved.spec.heightPx,
-          photoSize.width,
-          photoSize.height,
-        )
+    kind === 'photo' && lockShape && photoSize && shape.ok
+      ? fractionAspect(shape.spec.widthPx / shape.spec.heightPx, photoSize.width, photoSize.height)
       : undefined
   const startRegion = aspect === undefined ? FULL : fitRegion(aspect)
   // a new output shape, or switching the lock, starts the crop again
   const region = custom && custom.aspect === aspect ? custom.region : startRegion
   const setRegion = (next: Region) => setCustom({ aspect, region: next })
+
+  // Weigh the chosen part of the photo at the output size, so that a limit it cannot meet
+  // is refused before anything is made. Only for a photo: a signature's file holds little
+  // but ink, and has nothing in common with the weight of the paper it was written on.
+  const { x: regionX, y: regionY, width: regionWidth, height: regionHeight } = region
+  const widthPx = shape.ok ? shape.spec.widthPx : 0
+  const heightPx = shape.ok ? shape.spec.heightPx : 0
+  const format = shape.ok ? shape.spec.format : 'jpg'
+  const weighKey =
+    picture && kind === 'photo' && shape.ok && !orienting
+      ? [picture.id, regionX, regionY, regionWidth, regionHeight, widthPx, heightPx, format].join(' ')
+      : ''
+  useEffect(() => {
+    if (!picture || weighKey === '') return
+    let cancelled = false
+    // wait for the crop box to stop moving before doing the work
+    const timer = setTimeout(async () => {
+      try {
+        const measured = await measurePicture(
+          picture.blob,
+          { x: regionX, y: regionY, width: regionWidth, height: regionHeight },
+          { widthPx, heightPx, format, background: '#ffffff' },
+        )
+        if (!cancelled) setWeighed({ key: weighKey, measured })
+      } catch {
+        // a picture that cannot be weighed is not held up for it; Create still reports problems
+        if (!cancelled) setWeighed({ key: weighKey, measured: null })
+      }
+    }, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [picture, weighKey, regionX, regionY, regionWidth, regionHeight, widthPx, heightPx, format])
+  const measured = (weighed && weighed.key === weighKey && weighed.measured) || undefined
+  // true from the moment the request changes until the photo has been weighed for it:
+  // Create waits, so that a request the photo cannot meet is never started
+  const weighing = weighKey !== '' && weighed?.key !== weighKey
+
+  const resolved = resolveChecked(input, kind, measured)
+  const cropPixels =
+    photoSize && kind === 'photo'
+      ? { width: region.width * photoSize.width, height: region.height * photoSize.height }
+      : undefined
   // known before anything is made: whether the chosen part holds enough pixels
   const tooSmall =
-    photoSize && resolved.ok && kind === 'photo'
-      ? cropCaution(region.width * photoSize.width, region.height * photoSize.height, resolved.spec)
-      : null
+    cropPixels && shape.ok ? cropCaution(cropPixels.width, cropPixels.height, shape.spec) : null
+  const suggestions = suggest(kind, input, cropPixels, measured)
 
   function switchTheme() {
     const next: Theme = theme === 'dark' ? 'light' : 'dark'
@@ -258,17 +314,12 @@ function App() {
     }
   }
 
-  // choosing a photo only shows it for cropping; nothing is processed until Create is pressed
-  function onPick(file: File | undefined) {
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setInfo(`${file.name} is not a picture. Choose a JPG or PNG file.`)
-      return
-    }
-    lastFile.current = file
+  /** Make this the picture being worked on, with a fresh crop and no result. */
+  function show(blob: Blob, name: string) {
+    setPicture({ blob, name, id: ++shown.current })
     setPreview((previous) => {
       if (previous) URL.revokeObjectURL(previous)
-      return URL.createObjectURL(file)
+      return URL.createObjectURL(blob)
     })
     setPhotoSize(null)
     setCustom(null)
@@ -277,9 +328,54 @@ function App() {
     setInfo('')
   }
 
+  // Choosing a photo shows it for cropping, turned upright first when it is on its side or
+  // upside down. Nothing else is processed until Create is pressed.
+  async function onPick(file: File | undefined) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setInfo(`${file.name} is not a picture. Choose a JPG or PNG file.`)
+      return
+    }
+    const count = ++pickCount.current
+    show(file, file.name)
+    setTurnNote('')
+    setOrienting(true)
+    try {
+      const turns = await guessTurns(file, kind)
+      if (turns !== 0 && count === pickCount.current) {
+        const upright = await rotateFile(file, turns)
+        // a newer picture may have been chosen while this one was being turned
+        if (count !== pickCount.current) return
+        show(upright, file.name)
+        setTurnNote(
+          `This ${kind === 'photo' ? 'photo' : 'signature'} was ${turns === 2 ? 'upside down' : 'on its side'}, ` +
+            'so it was turned upright. Use Rotate if that is wrong.',
+        )
+      }
+    } catch {
+      // which way up could not be worked out: the picture stays as it was chosen
+    } finally {
+      if (count === pickCount.current) setOrienting(false)
+    }
+  }
+
+  /** Turn the picture a quarter turn clockwise, by hand. */
+  async function rotatePicture() {
+    if (!picture) return
+    const count = ++pickCount.current
+    const { name } = picture
+    const turned = await rotateFile(picture.blob, 1)
+    if (count !== pickCount.current) return
+    show(turned, name)
+    setTurnNote('')
+  }
+
   /** Put the picture and its result away, keeping the form details. */
   function startOver() {
-    lastFile.current = undefined
+    pickCount.current++
+    setPicture(null)
+    setOrienting(false)
+    setTurnNote('')
     setPreview((previous) => {
       if (previous) URL.revokeObjectURL(previous)
       return null
@@ -412,11 +508,11 @@ function App() {
 
   /** `forcedTurns` overrides the guess of which way up a signature is. */
   async function onCreate(forcedTurns?: number) {
-    const file = lastFile.current
-    if (!file || !resolved.ok) return
+    if (!picture || !resolved.ok) return
+    const file = picture.blob
     const spec = resolved.spec
     const chosen = isFull(region) ? undefined : region
-    const loaded = `${file.name}: ${(file.size / 1000).toFixed(0)} KB`
+    const loaded = `${picture.name}: ${(file.size / 1000).toFixed(0)} KB`
     setBusy(true)
     setInfo('')
     clearResult()
@@ -629,7 +725,7 @@ function App() {
                   onChange={setRegion}
                   onSize={(width, height) => setPhotoSize({ width, height })}
                   onError={() => {
-                    const name = lastFile.current?.name ?? 'That file'
+                    const name = picture?.name ?? 'That file'
                     startOver()
                     setInfo(`${name} could not be opened as a picture. Choose a JPG or PNG file.`)
                   }}
@@ -656,6 +752,18 @@ function App() {
                 onChange={(e) => onPick(e.target.files?.[0])}
               />
             </div>
+            {orienting && (
+              <p id="orienting" role="status" className="flex items-center gap-2.5 text-sm font-semibold">
+                <span className="nm-spinner" />
+                Checking which way up it is
+              </p>
+            )}
+            {turnNote && (
+              <p id="turn-note" className="nm-note">
+                <RotateIcon />
+                {turnNote}
+              </p>
+            )}
             {tooSmall && (
               <p id="crop-caution" className="nm-note">
                 <AlertIcon />
@@ -668,6 +776,10 @@ function App() {
                   <UploadIcon size={18} />
                   Change photo
                 </label>
+                <button id="rotate-picture" className="nm-btn" disabled={busy || orienting} onClick={rotatePicture}>
+                  <RotateIcon size={18} />
+                  Rotate
+                </button>
                 <button id="crop-reset" className="nm-btn" onClick={() => setCustom(null)}>
                   Reset crop
                 </button>
@@ -696,7 +808,13 @@ function App() {
             className="card flex flex-col gap-5 p-5 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start"
           >
             <Step number={2} title="What the form asks for" hint="Copy these from the portal." />
-            <SpecForm kind={kind} fields={fields} resolved={resolved} onChange={setFields} />
+            <SpecForm
+              kind={kind}
+              fields={fields}
+              resolved={resolved}
+              suggestions={suggestions}
+              onChange={setFields}
+            />
             {kind === 'photo' && (
               <label className={toggle}>
                 <span>
@@ -717,13 +835,19 @@ function App() {
             <button
               id="create"
               className="nm-btn nm-btn-primary w-full !min-h-12 !text-base"
-              disabled={!preview || !resolved.ok || busy}
+              disabled={!preview || !resolved.ok || busy || orienting || weighing}
               onClick={() => onCreate()}
             >
               {busy ? <span className="nm-spinner" /> : <SparkIcon />}
-              {busy ? 'Working' : `Create ${kind}`}
+              {busy ? 'Working' : weighing || orienting ? 'Checking your photo' : `Create ${kind}`}
             </button>
-            {!preview && <p className="text-soft -mt-2 text-center text-xs">Add a photo first.</p>}
+            {!resolved.ok ? (
+              <p id="create-blocked" className="nm-danger -mt-2 text-center text-xs font-semibold">
+                Fix what is marked above to continue.
+              </p>
+            ) : (
+              !preview && <p className="text-soft -mt-2 text-center text-xs">Add a photo first.</p>
+            )}
             {info && (
               <p id="info" className="nm-danger -mt-2 text-sm font-medium">
                 {info}

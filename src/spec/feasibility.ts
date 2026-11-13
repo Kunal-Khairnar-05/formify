@@ -1,4 +1,6 @@
 import type { Spec } from '../pipeline/types'
+import type { Measured } from './estimate'
+import type { SpecFields } from './fields'
 import { resolveSpec, type SpecInput } from './units'
 
 /** What is being made; some checks differ between a photo and a signature. */
@@ -14,6 +16,14 @@ export type Checked =
 
 // fitKb aims 5% under the maximum, so that much of the limit is not usable
 const USABLE = 0.95
+/*
+ * How much smaller than the measured mark the finished photo can turn out. The mark is
+ * taken with the photo's own background; the finished photo has a plain one. On two test
+ * photos at three sizes each the finished file was 0.60 to 1.00 of the mark (JPG and PNG).
+ * Below half the mark, the request is refused outright; between half and the whole mark it
+ * is allowed with a caution.
+ */
+const CERTAIN = 0.5
 // DPI values outside this range are almost always a typing mistake
 const USUAL_DPI = { min: 72, max: 600 }
 // a side this many times the other is treated as a likely mistake
@@ -58,6 +68,8 @@ export function checkSpec(
   spec: Spec,
   input: SpecInput,
   kind: Kind,
+  /** What the chosen photo weighs at this size, when one has been chosen and measured. */
+  measured?: Measured,
 ): { errors: string[]; cautions: string[] } {
   const errors: string[] = []
   const cautions: string[] = []
@@ -79,7 +91,27 @@ export function checkSpec(
     )
   }
 
-  if (maxKb !== undefined && spec.format === 'png') {
+  if (maxKb !== undefined && kind === 'photo' && measured) {
+    // the photo itself has been weighed at this size, which beats any rule of thumb
+    const isPng = spec.format === 'png'
+    const budget = isPng ? maxKb * 1000 : maxKb * 1000 * USABLE
+    const needed = `${kb((measured.smallestBytes * CERTAIN * maxKb * 1000) / budget)} KB`
+    if (budget < measured.smallestBytes * CERTAIN) {
+      errors.push(
+        isPng
+          ? `As a PNG, this photo at ${size} needs about ${needed} or more, and a PNG cannot be made ` +
+              `smaller. ${maxKb} KB cannot be met. Choose JPG if the portal allows it.`
+          : `This photo at ${size} needs about ${needed} or more, even at the lowest quality. ` +
+              `${maxKb} KB cannot be met. Check the size and the limit against the portal.`,
+      )
+    } else if (budget < measured.smallestBytes) {
+      cautions.push(
+        isPng
+          ? `${maxKb} KB is tight for this photo as a PNG at ${size}. It may not fit, and a PNG cannot be made smaller.`
+          : `${maxKb} KB is tight for this photo at ${size}. It may not fit, or may look blocky.`,
+      )
+    }
+  } else if (maxKb !== undefined && spec.format === 'png') {
     // a PNG cannot be squeezed, so a photo either fits as it is or does not
     if (kind === 'photo' && maxKb * 1000 < typicalPhotoPng(pixels)) {
       cautions.push(
@@ -132,10 +164,10 @@ export function checkSpec(
 }
 
 /** Check everything the user asked for: first that it makes sense, then that it can be made. */
-export function resolveChecked(input: SpecInput, kind: Kind): Checked {
+export function resolveChecked(input: SpecInput, kind: Kind, measured?: Measured): Checked {
   const resolved = resolveSpec(input)
   if (!resolved.ok) return resolved
-  const { errors, cautions } = checkSpec(resolved.spec, input, kind)
+  const { errors, cautions } = checkSpec(resolved.spec, input, kind, measured)
   return errors.length > 0 ? { ok: false, errors } : { ok: true, spec: resolved.spec, cautions }
 }
 
@@ -152,4 +184,135 @@ export function cropCaution(cropWidthPx: number, cropHeightPx: number, spec: Spe
     `needs ${spec.widthPx} x ${spec.heightPx} px, so it will be enlarged about ` +
     `${shortBy.toFixed(1)} times and look soft. Choose a larger part or a sharper photo.`
   )
+}
+
+/** A change to the form that would fix a problem or suit the picture better. */
+export interface Suggestion {
+  /** What the change is and why. */
+  text: string
+  /** The words on the button that makes the change. */
+  action: string
+  /** The form fields to set. */
+  patch: Partial<SpecFields>
+}
+
+// a limit is suggested as a round number of KB
+const roundUp = (value: number, step: number) => Math.ceil(value / step) * step
+const stepFor = (kbValue: number) => (kbValue > 100 ? 10 : kbValue > 20 ? 5 : 1)
+
+/**
+ * Changes worth offering: first what would make an impossible request possible, then what
+ * would suit the chosen picture better. The portal's own rules come first, so these are
+ * offers, never applied on their own.
+ */
+export function suggest(
+  kind: Kind,
+  input: SpecInput,
+  /** The chosen part of the photo in pixels, when a photo has been chosen. */
+  crop?: { width: number; height: number },
+  measured?: Measured,
+): Suggestion[] {
+  const out: Suggestion[] = []
+  const { minKb, maxKb } = input
+
+  if (input.unit === 'px' && (!Number.isInteger(input.width) || !Number.isInteger(input.height))) {
+    if (Number.isFinite(input.width) && Number.isFinite(input.height)) {
+      const width = Math.round(input.width)
+      const height = Math.round(input.height)
+      out.push({
+        text: `Pixels cannot be divided. The nearest whole size is ${width} x ${height} px.`,
+        action: `Use ${width} x ${height} px`,
+        patch: { width: String(width), height: String(height) },
+      })
+    }
+  }
+
+  if (minKb !== undefined && maxKb !== undefined && minKb < maxKb && minKb * 1024 > maxKb * 1000) {
+    // the largest minimum that still leaves a size under the maximum
+    const lower = Math.floor((maxKb * 1000) / 1024)
+    if (lower >= 1) {
+      out.push({
+        text: `With a ${maxKb} KB maximum, the highest minimum that can be met is ${lower} KB.`,
+        action: `Set the minimum to ${lower} KB`,
+        patch: { minKb: String(lower) },
+      })
+    }
+  }
+
+  const resolved = resolveSpec(input)
+  if (!resolved.ok) return out
+  const { spec } = resolved
+  const pixels = spec.widthPx * spec.heightPx
+  const isPng = spec.format === 'png'
+
+  // a limit that is too low, or tight: say what would work
+  if (maxKb !== undefined) {
+    let neededBytes = 0
+    if (kind === 'photo' && measured) neededBytes = measured.smallestBytes
+    else if (!isPng) neededBytes = kind === 'photo' ? typicalPhotoJpeg(pixels) : smallestJpeg(pixels)
+    else if (kind === 'photo') neededBytes = typicalPhotoPng(pixels)
+    const budget = isPng ? maxKb * 1000 : maxKb * 1000 * USABLE
+
+    if (neededBytes > budget) {
+      if (isPng && kind === 'photo') {
+        out.push({
+          text: 'A JPG of the same photo is many times smaller than a PNG and looks the same at this size.',
+          action: 'Switch to JPG',
+          patch: { format: 'jpg' },
+        })
+      }
+      const wanted = neededBytes / (isPng ? 1000 : 1000 * USABLE)
+      const limit = roundUp(wanted, stepFor(wanted))
+      out.push({
+        text: `${isPng ? 'As a PNG, this' : 'This'} size fits comfortably from about ${limit} KB.`,
+        action: `Set the maximum to ${limit} KB`,
+        patch: { maxKb: String(limit) },
+      })
+    }
+  } else if (kind === 'photo' && measured && !isPng) {
+    const wanted = measured.bestBytes / (1000 * USABLE)
+    const limit = roundUp(wanted, stepFor(wanted))
+    out.push({
+      text: `No maximum is set. This photo keeps its full quality within ${limit} KB.`,
+      action: `Set the maximum to ${limit} KB`,
+      patch: { maxKb: String(limit) },
+    })
+  }
+
+  // the chosen part holds fewer pixels than the output: offer the most it can give
+  if (kind === 'photo' && crop && cropCaution(crop.width, crop.height, spec)) {
+    const scale = Math.min(crop.width / spec.widthPx, crop.height / spec.heightPx)
+    const width = Math.floor(spec.widthPx * scale)
+    const height = Math.floor(spec.heightPx * scale)
+    if (width >= 20 && height >= 20) {
+      out.push({
+        text: `The sharpest this part of the photo can give, in the same shape, is ${width} x ${height} px.`,
+        action: `Use ${width} x ${height} px`,
+        patch: { width: String(width), height: String(height), unit: 'px' },
+      })
+    }
+  }
+
+  const swapped =
+    (kind === 'photo' && spec.widthPx > spec.heightPx) || (kind === 'signature' && spec.heightPx > spec.widthPx)
+  if (swapped) {
+    out.push({
+      text:
+        kind === 'photo'
+          ? 'Form photos are usually taller than wide.'
+          : 'Signatures are usually wider than tall.',
+      action: 'Swap width and height',
+      patch: { width: String(input.height), height: String(input.width) },
+    })
+  }
+
+  if (input.unit !== 'px' && (input.dpi < USUAL_DPI.min || input.dpi > USUAL_DPI.max)) {
+    out.push({
+      text: 'Most forms that give a size in cm, mm or inches mean 300 DPI.',
+      action: 'Use 300 DPI',
+      patch: { dpi: '300' },
+    })
+  }
+
+  return out
 }

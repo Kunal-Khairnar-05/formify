@@ -62,6 +62,16 @@ function findInk(image: ImageBitmap): { mask: Float32Array; ink: Rect | null; pi
   return { mask, ink: inkBounds(mask, width, height, MIN_INK), pixels }
 }
 
+/**
+ * Which way up a signature photo is, as clockwise quarter turns to make it upright.
+ * 0 when no ink is found. Used to turn the photo as soon as it is chosen.
+ */
+export async function guessSignatureTurns(file: Blob): Promise<number> {
+  const image = await loadImage(file, WORKING_EDGE)
+  const found = findInk(image)
+  return found.ink ? uprightTurns(found.mask, image.width, found.ink).turns : 0
+}
+
 /** Signature pipeline: photo of a signature on paper in, clean spec-sized JPEG out. */
 export async function processSignature(
   file: Blob,

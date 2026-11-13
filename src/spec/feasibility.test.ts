@@ -4,6 +4,7 @@ import {
   cropCaution,
   resolveChecked,
   smallestJpeg,
+  suggest,
   typicalPhotoJpeg,
   type Kind,
 } from './feasibility'
@@ -180,5 +181,131 @@ describe('cropCaution', () => {
   it('goes by the side that is shortest of what it needs', () => {
     // wide enough, but only half the height needed
     expect(cropCaution(800, 265, spec)).toContain('about 2.0 times')
+  })
+})
+
+describe('resolveChecked, with the photo measured', () => {
+  // the chosen photo at 413 x 531 px: 12 KB at the lowest quality, 76 KB at the best
+  const measured = { smallestBytes: 12_000, bestBytes: 76_000 }
+  const withPhoto = (change: Partial<SpecInput>) => resolveChecked(input(change), 'photo', measured)
+
+  it('refuses a limit under half of what the photo weighs at the lowest quality', () => {
+    // 5 KB leaves 4,750 bytes; half the mark is 6,000
+    const result = withPhoto({ maxKb: 5 })
+    expect(errors(result)[0]).toContain('5 KB cannot be met')
+    expect(errors(result)[0]).toContain('needs about 6.3 KB or more')
+  })
+
+  it('cautions between half the mark and the whole mark', () => {
+    const result = withPhoto({ maxKb: 10 })
+    expect(result.ok).toBe(true)
+    expect(cautions(result)[0]).toContain('10 KB is tight for this photo')
+  })
+
+  it('says nothing when the limit is above the mark', () => {
+    expect(withPhoto({ maxKb: 50 })).toMatchObject({ ok: true, cautions: [] })
+  })
+
+  it('refuses a PNG limit under half of what the photo weighs as a PNG', () => {
+    const png = { smallestBytes: 430_000, bestBytes: 430_000 }
+    const result = resolveChecked(input({ format: 'png', maxKb: 50 }), 'photo', png)
+    expect(errors(result)[0]).toContain('a PNG cannot be made smaller')
+    expect(errors(result)[0]).toContain('Choose JPG')
+  })
+
+  it('does not use the photo measurement for a signature', () => {
+    const result = resolveChecked(
+      input({ width: 140, height: 60, unit: 'px', maxKb: 5 }),
+      'signature',
+      measured,
+    )
+    expect(result).toMatchObject({ ok: true, cautions: [] })
+  })
+})
+
+describe('suggest', () => {
+  const actions = (list: ReturnType<typeof suggest>) => list.map((item) => item.action)
+
+  it('offers nothing for the usual details', () => {
+    expect(suggest('photo', input())).toEqual([])
+    expect(suggest('signature', input({ width: 140, height: 60, unit: 'px', minKb: 10, maxKb: 20 }))).toEqual([])
+  })
+
+  it('offers the nearest whole pixels', () => {
+    const [first] = suggest('photo', input({ width: 200.5, height: 230.2, unit: 'px' }))
+    expect(first.action).toBe('Use 201 x 230 px')
+    expect(first.patch).toEqual({ width: '201', height: '230' })
+  })
+
+  it('offers the highest minimum that fits under the maximum', () => {
+    // 50,000 bytes is 48.8 KB of 1024 bytes
+    const [first] = suggest('photo', input({ minKb: 49, maxKb: 50 }))
+    expect(first.patch).toEqual({ minKb: '48' })
+  })
+
+  it('offers a limit that works when the measured photo does not fit', () => {
+    const list = suggest('photo', input({ maxKb: 5 }), undefined, { smallestBytes: 12_000, bestBytes: 76_000 })
+    // 12,000 bytes needs 12.6 KB with the margin, rounded up
+    expect(actions(list)).toEqual(['Set the maximum to 13 KB'])
+  })
+
+  it('offers JPG first when a PNG photo does not fit', () => {
+    const list = suggest('photo', input({ format: 'png', maxKb: 50 }), undefined, {
+      smallestBytes: 430_000,
+      bestBytes: 430_000,
+    })
+    expect(actions(list)).toEqual(['Switch to JPG', 'Set the maximum to 430 KB'])
+    expect(list[0].patch).toEqual({ format: 'jpg' })
+  })
+
+  it('offers a limit when none is set and the photo has been measured', () => {
+    const list = suggest('photo', input({ maxKb: undefined }), undefined, {
+      smallestBytes: 12_000,
+      bestBytes: 76_000,
+    })
+    // 76,000 bytes needs 80 KB with the margin
+    expect(actions(list)).toEqual(['Set the maximum to 80 KB'])
+  })
+
+  it('offers the most the chosen part can give without enlarging, in the same shape', () => {
+    // the form needs 413 x 531 px; the chosen part is 233 x 300 px
+    const list = suggest('photo', input(), { width: 233, height: 300 })
+    expect(list[0].action).toBe('Use 233 x 299 px')
+    expect(list[0].patch).toEqual({ width: '233', height: '299', unit: 'px' })
+  })
+
+  it('offers to swap a photo that is wider than tall, and a signature that is taller than wide', () => {
+    expect(suggest('photo', input({ width: 4.5, height: 3.5 }))[0]).toMatchObject({
+      action: 'Swap width and height',
+      patch: { width: '3.5', height: '4.5' },
+    })
+    const signature = suggest('signature', input({ width: 60, height: 140, unit: 'px', maxKb: 20 }))
+    expect(signature[0].patch).toEqual({ width: '140', height: '60' })
+  })
+
+  it('offers 300 DPI for an unusual DPI', () => {
+    expect(actions(suggest('photo', input({ dpi: 30 })))).toContain('Use 300 DPI')
+  })
+
+  it('every offer, once applied, removes the problem it answers', () => {
+    const cases: SpecInput[] = [
+      input({ width: 200.5, height: 230, unit: 'px' }),
+      input({ minKb: 49, maxKb: 50 }),
+      input({ width: 4000, height: 4000, unit: 'px', maxKb: 20 }),
+    ]
+    for (const before of cases) {
+      expect(resolveChecked(before, 'signature').ok).toBe(false)
+      const [first] = suggest('signature', before)
+      const number = (text: string | undefined, fallback: number | undefined) =>
+        text === undefined ? fallback : Number(text)
+      const after: SpecInput = {
+        ...before,
+        width: number(first.patch.width, before.width)!,
+        height: number(first.patch.height, before.height)!,
+        minKb: number(first.patch.minKb, before.minKb),
+        maxKb: number(first.patch.maxKb, before.maxKb),
+      }
+      expect(resolveChecked(after, 'signature').ok).toBe(true)
+    }
   })
 })

@@ -3,7 +3,7 @@ import { AlertIcon, ChevronIcon } from './icons'
 import type { Extension } from './pipeline/types'
 import type { SpecFields } from './spec/fields'
 import { parseInstructions } from './spec/instructions'
-import type { Checked } from './spec/feasibility'
+import type { Checked, Suggestion } from './spec/feasibility'
 import type { Unit } from './spec/units'
 
 const UNITS: { value: Unit; label: string }[] = [
@@ -46,11 +46,13 @@ interface Props {
   kind: 'photo' | 'signature'
   fields: SpecFields
   resolved: Checked
+  /** Changes that would fix a problem or suit the picture better. */
+  suggestions: Suggestion[]
   onChange: (fields: SpecFields) => void
 }
 
 /** What the form asks for: size, unit, DPI, file size limits and background colour. */
-export function SpecForm({ kind, fields, resolved, onChange }: Props) {
+export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Props) {
   const set = (patch: Partial<SpecFields>) => onChange({ ...fields, ...patch })
   const [pasted, setPasted] = useState('')
   // null until "Fill from text" has been pressed
@@ -282,6 +284,22 @@ export function SpecForm({ kind, fields, resolved, onChange }: Props) {
               <li key={error}>{error}</li>
             ))}
           </ul>
+        </div>
+      )}
+      {suggestions.length > 0 && (
+        <div id="spec-suggestions" className="flex flex-col gap-3">
+          <p className={group}>SUGGESTED</p>
+          {suggestions.map((suggestion) => (
+            <div key={suggestion.action} className="card flex flex-col items-start gap-2.5 p-3">
+              <p className="text-sm font-medium">{suggestion.text}</p>
+              <button className="nm-btn !min-h-9 !text-xs" onClick={() => set(suggestion.patch)}>
+                {suggestion.action}
+              </button>
+            </div>
+          ))}
+          <p className="text-soft text-xs">
+            These suit your picture. If the portal gives its own numbers, those come first.
+          </p>
         </div>
       )}
     </div>
