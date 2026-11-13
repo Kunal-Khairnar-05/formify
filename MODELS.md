@@ -32,3 +32,25 @@ Every model file shipped with Formify, where it came from, and its checksum.
   MODNet is optional ("finer hair edges"): it is loaded only when asked for and supplies a soft edge
   inside the area U²-Net kept.
 - An 8-bit quantized MODNet (6.6 MB) was tried and rejected: it was no faster and left visible patches.
+
+## WebGPU: measured on 14 Nov 2026, and not used
+
+Running the models on the graphics card through onnxruntime-web's WebGPU provider was tried
+(version 1.31.1, Chrome, an AMD graphics card, each model run from a worker).
+
+| Model | WebAssembly with threads | WebGPU |
+| --- | --- | --- |
+| `u2netp.onnx` (the default) | about 800 ms a run | does not run |
+| `modnet.onnx` (finer hair edges) | about 540 ms a run | 2,978 ms the first run, then about 170 ms |
+
+- U²-Net fails to load on WebGPU: "ceil_mode kernel execution (padding) is not yet implemented
+  in the WebGPU MaxPool kernel". The default flow cannot use it without re-exporting the model.
+- MODNet is about three times faster once warm, but its first run takes about three seconds
+  while the graphics card's programs are compiled. Most people make one or two photos, so the
+  first run is the one that counts, and that is slower than WebAssembly.
+- The WebGPU build of the runtime is a 28.7 MB file where the WebAssembly one is 14.8 MB.
+
+So WebGPU would make the download larger and the usual visit slower, and cannot run the default
+model. It is worth trying again if a later runtime supports U²-Net's pooling, or if the app
+comes to make many photos in one visit.
+
