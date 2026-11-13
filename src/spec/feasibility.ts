@@ -1,7 +1,7 @@
 import type { Spec } from '../pipeline/types'
 import type { Measured } from './estimate'
 import type { SpecFields } from './fields'
-import { resolveSpec, type SpecInput } from './units'
+import { resolveSpec, toPixels, type SpecInput } from './units'
 
 /** What is being made; some checks differ between a photo and a signature. */
 export type Kind = 'photo' | 'signature'
@@ -184,6 +184,54 @@ export function cropCaution(cropWidthPx: number, cropHeightPx: number, spec: Spe
     `needs ${spec.widthPx} x ${spec.heightPx} px, so it will be enlarged about ` +
     `${shortBy.toFixed(1)} times and look soft. Choose a larger part or a sharper photo.`
   )
+}
+
+/** A box of the form, by the name of its field. */
+export type FieldName = keyof SpecFields
+
+/**
+ * The boxes whose values are behind the errors, so the form can mark them. Follows the same
+ * rules as resolveSpec and checkSpec; empty when the request can be made.
+ */
+export function badFields(input: SpecInput, kind: Kind, measured?: Measured): FieldName[] {
+  const bad = new Set<FieldName>()
+  const positive = (n: number) => Number.isFinite(n) && n > 0
+  const { minKb, maxKb } = input
+
+  if (!positive(input.width)) bad.add('width')
+  if (!positive(input.height)) bad.add('height')
+  if (input.unit !== 'px' && !positive(input.dpi)) bad.add('dpi')
+  if (minKb !== undefined && !positive(minKb)) bad.add('minKb')
+  if (maxKb !== undefined && !positive(maxKb)) bad.add('maxKb')
+  if (minKb !== undefined && maxKb !== undefined && positive(minKb) && positive(maxKb)) {
+    // the wrong way round, or too close together to satisfy both readings of 1 KB
+    if (minKb >= maxKb || minKb * 1024 > maxKb * 1000) {
+      bad.add('minKb')
+      bad.add('maxKb')
+    }
+  }
+  if (input.unit === 'px') {
+    if (positive(input.width) && !Number.isInteger(input.width)) bad.add('width')
+    if (positive(input.height) && !Number.isInteger(input.height)) bad.add('height')
+  }
+  if (bad.size > 0) return [...bad]
+
+  const resolved = resolveSpec(input)
+  if (!resolved.ok) {
+    // what is left is a side outside the range the app can make
+    const side = (value: number) => toPixels(value, input.unit, input.dpi)
+    const outside = (px: number) => px < 20 || px > 4000
+    if (outside(side(input.width))) bad.add('width')
+    if (outside(side(input.height))) bad.add('height')
+    return [...bad]
+  }
+
+  // a limit this size, or this photo, cannot meet
+  if (checkSpec(resolved.spec, input, kind, measured).errors.length > 0) {
+    bad.add('maxKb')
+    if (resolved.spec.format === 'png') bad.add('format')
+  }
+  return [...bad]
 }
 
 /** A change to the form that would fix a problem or suit the picture better. */

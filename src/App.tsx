@@ -5,7 +5,7 @@ import {
   AlertIcon,
   CheckIcon,
   ChevronIcon,
-  CloseIcon,
+  MenuIcon,
   DownloadIcon,
   LockIcon,
   MoonIcon,
@@ -23,7 +23,7 @@ import type { Rect, Spec } from './pipeline/types'
 import { processSignature } from './signature/process'
 import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from './spec/fields'
 import { measurePicture, type Measured } from './spec/estimate'
-import { cropCaution, resolveChecked, suggest } from './spec/feasibility'
+import { badFields, cropCaution, resolveChecked, suggest } from './spec/feasibility'
 import { SpecForm } from './SpecForm'
 import { guessTurns, rotateFile } from './upright'
 
@@ -287,6 +287,7 @@ function App() {
   const tooSmall =
     cropPixels && shape.ok ? cropCaution(cropPixels.width, cropPixels.height, shape.spec) : null
   const suggestions = suggest(kind, input, cropPixels, measured)
+  const bad = resolved.ok ? [] : badFields(input, kind, measured)
 
   function switchTheme() {
     const next: Theme = theme === 'dark' ? 'light' : 'dark'
@@ -603,24 +604,16 @@ function App() {
           sidebar ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-[4.75rem]'
         }`}
       >
-        <div className="flex items-center gap-3">
-          <span className="card flex h-11 w-11 flex-none items-center justify-center">
-            <img src="/favicon.svg" alt="" className="h-6 w-6" />
-          </span>
-          {sidebar && (
-            <div className="min-w-0 flex-1">
-              <p className="text-lg leading-tight font-extrabold tracking-tight">Formify</p>
-              <p className="text-soft text-xs font-medium">Form-ready in a minute</p>
-            </div>
-          )}
-          <button
-            className="nm-btn nm-btn-icon lg:hidden"
-            aria-label="Close sidebar"
-            onClick={() => setSidebar(false)}
-          >
-            <CloseIcon />
-          </button>
-        </div>
+        <button
+          id="sidebar-toggle"
+          className={`nm-btn nm-btn-icon ${sidebar ? 'self-end' : 'self-center'}`}
+          aria-label={sidebar ? 'Collapse sidebar' : 'Open sidebar'}
+          aria-expanded={sidebar}
+          aria-controls="sidebar"
+          onClick={() => setSidebar(!sidebar)}
+        >
+          <SidebarIcon />
+        </button>
 
         <nav aria-label="What to make" className="flex flex-col gap-2">
           {sidebar && <p className="text-soft px-3 text-xs font-bold tracking-wide">CREATE</p>}
@@ -667,32 +660,33 @@ function App() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-4 px-4 pt-4 sm:px-8 sm:pt-6">
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-[var(--line)] px-4 py-3 sm:px-8">
+          {/* on a phone the sidebar is off the screen, so its own button cannot open it */}
           <button
-            id="sidebar-toggle"
-            className="nm-btn nm-btn-icon"
-            aria-label={sidebar ? 'Collapse sidebar' : 'Open sidebar'}
-            aria-expanded={sidebar}
+            id="sidebar-open"
+            className="nm-btn nm-btn-icon lg:hidden"
+            aria-label="Open sidebar"
             aria-controls="sidebar"
-            onClick={() => setSidebar(!sidebar)}
+            onClick={() => setSidebar(true)}
           >
-            <SidebarIcon />
+            <MenuIcon />
           </button>
-          <div className="min-w-0">
-            <h1 className="text-xl leading-tight font-extrabold tracking-tight sm:text-2xl">
-              {current.title}
-            </h1>
-            <p className="text-soft hidden text-sm sm:block">{current.lead}</p>
+          <span className="card flex h-11 w-11 flex-none items-center justify-center">
+            <img src="/favicon.svg" alt="" className="h-6 w-6" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xl leading-tight font-extrabold tracking-tight">Formify</p>
+            <h1 className="text-soft truncate text-sm font-semibold">{current.title}</h1>
           </div>
-          <p className="card ml-auto hidden flex-none items-center gap-2 !rounded-full px-3 py-1.5 text-xs font-bold md:flex">
+          <p className="card hidden flex-none items-center gap-2 !rounded-full px-3 py-1.5 text-xs font-bold md:flex">
             <LockIcon size={16} />
             On-device
           </p>
         </header>
 
         {/* on a phone: picture, form, result, in that order; on a wide screen the form sits on the right */}
-        <main className="grid flex-1 content-start gap-6 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,1fr)_23rem] xl:grid-rows-[auto_auto_auto]">
-          <section aria-label="Your picture" className="card flex min-w-0 flex-col gap-4 p-5">
+        <main className="grid flex-1 content-start gap-6 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,1fr)_23rem] xl:grid-rows-[auto_1fr_auto]">
+          <section aria-label="Your picture" className="card flex min-w-0 flex-col gap-4 p-5 xl:self-start">
             <Step
               number={1}
               title={kind === 'photo' ? 'Add your photo' : 'Add a photo of your signature'}
@@ -705,7 +699,7 @@ function App() {
               }
             />
             <div
-              className={`nm-inset nm-drop p-3 ${dragging ? 'outline-2 outline-offset-2 outline-[var(--primary-dark)]' : ''}`}
+              className={`nm-inset nm-drop flex flex-1 flex-col p-3 ${dragging ? 'outline-2 outline-offset-2 outline-[var(--primary-dark)]' : ''}`}
               onDragOver={(e) => {
                 e.preventDefault()
                 setDragging(true)
@@ -733,7 +727,7 @@ function App() {
               ) : (
                 <label
                   htmlFor="photo"
-                  className="flex min-h-64 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--shadow-dark)] p-6 text-center"
+                  className="flex min-h-56 flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--dash)] p-6 text-center"
                 >
                   <span className="card flex h-14 w-14 items-center justify-center">
                     <UploadIcon size={26} />
@@ -808,11 +802,31 @@ function App() {
             className="card flex flex-col gap-5 p-5 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start"
           >
             <Step number={2} title="What the form asks for" hint="Copy these from the portal." />
+            {/* at the top of the form, so it is in view without scrolling past every box */}
+            <div className="flex flex-col gap-1.5">
+              <button
+                id="create"
+                className="nm-btn nm-btn-primary w-full !min-h-12 !text-base"
+                disabled={!preview || !resolved.ok || busy || orienting || weighing}
+                onClick={() => onCreate()}
+              >
+                {busy ? <span className="nm-spinner" /> : <SparkIcon />}
+                {busy ? 'Working' : weighing || orienting ? 'Checking your photo' : `Create ${kind}`}
+              </button>
+              {!resolved.ok ? (
+                <p id="create-blocked" className="nm-danger text-center text-xs font-semibold">
+                  Fix the boxes marked in red to continue.
+                </p>
+              ) : (
+                !preview && <p className="text-soft text-center text-xs">Add a photo first.</p>
+              )}
+            </div>
             <SpecForm
               kind={kind}
               fields={fields}
               resolved={resolved}
               suggestions={suggestions}
+              bad={bad}
               onChange={setFields}
             />
             {kind === 'photo' && (
@@ -832,24 +846,8 @@ function App() {
                 />
               </label>
             )}
-            <button
-              id="create"
-              className="nm-btn nm-btn-primary w-full !min-h-12 !text-base"
-              disabled={!preview || !resolved.ok || busy || orienting || weighing}
-              onClick={() => onCreate()}
-            >
-              {busy ? <span className="nm-spinner" /> : <SparkIcon />}
-              {busy ? 'Working' : weighing || orienting ? 'Checking your photo' : `Create ${kind}`}
-            </button>
-            {!resolved.ok ? (
-              <p id="create-blocked" className="nm-danger -mt-2 text-center text-xs font-semibold">
-                Fix what is marked above to continue.
-              </p>
-            ) : (
-              !preview && <p className="text-soft -mt-2 text-center text-xs">Add a photo first.</p>
-            )}
             {info && (
-              <p id="info" className="nm-danger -mt-2 text-sm font-medium">
+              <p id="info" className="nm-danger text-sm font-medium">
                 {info}
               </p>
             )}
