@@ -5,7 +5,9 @@
 // Vercel's Storage tab), which sets the address and token below. Until one is added, the
 // function says so and the page shows no count.
 
-import { countOne, isKind, redisStore, totals, visitorCode } from '../src/counter/server'
+// The file ending is written out, and as .js: this runs in Node as an ES module, which
+// looks for exactly the file named and finds the compiled one.
+import { countOne, isKind, redisStore, totals, visitorCode } from '../src/counter/server.js'
 
 const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL
 const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN
