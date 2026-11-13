@@ -13,6 +13,7 @@ import { detectUpright } from './orient'
 import { cropSource } from './precrop'
 import { cropAndResize } from './resize'
 import { segment } from './segment'
+import { measureFace, sourceWarnings } from './sourceWarnings'
 import type { FaceGeometry, Rect, Spec } from './types'
 
 // how far the "who" mask is grown before it limits the matte, as a fraction of image width;
@@ -134,6 +135,10 @@ export async function processPhoto(
         'is filled with the background colour. Use a wider crop or a photo taken from further away.',
     )
   }
+
+  // the lean, light and sharpness of the face as photographed
+  warnings.push(...sourceWarnings(measureFace(image, face)))
+  lap('checks')
 
   const exported = await exportJpeg(final, spec)
   lap('encode')
