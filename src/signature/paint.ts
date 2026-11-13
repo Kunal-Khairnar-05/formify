@@ -41,6 +41,12 @@ export function inkColour(
   return count === 0 ? null : [r / count, g / count, b / count]
 }
 
+/** The one colour the signature is drawn in, as CSS: the photographed ink, darkened. */
+export function inkCss(data: ArrayLike<number>, mask: Float32Array): string {
+  const [r, g, b] = (inkColour(data, mask) ?? [0, 0, 0]).map((v) => Math.round(v * DARKEN))
+  return `rgb(${r},${g},${b})`
+}
+
 /**
  * How wide the pen strokes are, in pixels: a ballpoint from a distance is about 2, a marker
  * in a close-up 15 or more. A stroke of length L and width w covers L * w pixels and has

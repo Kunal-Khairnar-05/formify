@@ -77,6 +77,10 @@ export function checkSpec(
   const pixels = widthPx * heightPx
   const size = `${widthPx} x ${heightPx} px`
 
+  if (spec.format === 'svg' && kind === 'photo') {
+    errors.push('SVG is a drawing made of curves, which suits a signature but not a photo. Choose JPG or PNG.')
+  }
+
   // a pixel cannot be divided
   if (input.unit === 'px' && (!Number.isInteger(input.width) || !Number.isInteger(input.height))) {
     errors.push('Pixels must be whole numbers. Check the width and height, or change the unit.')
@@ -119,7 +123,7 @@ export function checkSpec(
           `${maxKb} KB, and a PNG cannot be made smaller. If the portal allows JPG, choose that.`,
       )
     }
-  } else if (maxKb !== undefined) {
+  } else if (maxKb !== undefined && spec.format === 'jpg') {
     const budget = maxKb * 1000 * USABLE
     if (budget < smallestJpeg(pixels)) {
       errors.push(
@@ -229,7 +233,9 @@ export function badFields(input: SpecInput, kind: Kind, measured?: Measured): Fi
   // a limit this size, or this photo, cannot meet
   if (checkSpec(resolved.spec, input, kind, measured).errors.length > 0) {
     bad.add('maxKb')
-    if (resolved.spec.format === 'png') bad.add('format')
+    if (resolved.spec.format !== 'jpg') bad.add('format')
+    // an SVG photo is refused whatever the limit is
+    if (resolved.spec.format === 'svg' && kind === 'photo') bad.delete('maxKb')
   }
   return [...bad]
 }
@@ -292,6 +298,18 @@ export function suggest(
   const { spec } = resolved
   const pixels = spec.widthPx * spec.heightPx
   const isPng = spec.format === 'png'
+
+  if (spec.format === 'svg') {
+    // a drawing's size depends on the signature, not on the pixel count: no limit to suggest
+    if (kind === 'photo') {
+      out.push({
+        text: 'SVG is only made for signatures. A photo is stored as JPG.',
+        action: 'Switch to JPG',
+        patch: { format: 'jpg' },
+      })
+    }
+    return out
+  }
 
   // a limit that is too low, or tight: say what would work
   if (maxKb !== undefined) {
