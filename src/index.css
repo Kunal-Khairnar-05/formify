@@ -20,6 +20,11 @@
   /* what cards and buttons are made of: the page itself in light mode */
   --card: var(--bg);
   --btn: var(--bg);
+  /* a switch that is off: its groove and its knob */
+  --track: var(--bg);
+  --knob: var(--bg);
+  /* the dashed outline of the drop area */
+  --dash: var(--shadow-dark);
   --ink: #0e0e10;
   --ink-soft: #3d3a4d;
   /* text inside yellow fields and purple buttons, the same in both themes */
@@ -44,6 +49,9 @@
   --bg: #0f0f11;
   --card: #151517;
   --btn: #1c1c1f;
+  --track: #2c2c31;
+  --knob: #9a9aa3;
+  --dash: #3a3a40;
   --shadow-light: #1a1a1d;
   --shadow-dark: #050506;
   --edge: rgb(255 255 255 / 0.07);
@@ -285,7 +293,8 @@ body {
     width: 2.75rem;
     height: 1.5rem;
     border-radius: 999px;
-    background: var(--bg);
+    border: 1px solid var(--line);
+    background: var(--track);
     cursor: pointer;
     box-shadow:
       inset 2px 2px 5px var(--shadow-dark),
@@ -296,12 +305,12 @@ body {
   .nm-switch::after {
     content: '';
     position: absolute;
-    top: 0.1875rem;
-    left: 0.1875rem;
+    top: 0.125rem;
+    left: 0.125rem;
     width: 1.125rem;
     height: 1.125rem;
     border-radius: 50%;
-    background: var(--bg);
+    background: var(--knob);
     box-shadow: 2px 2px 4px var(--shadow-dark);
     transition: transform 160ms ease;
   }

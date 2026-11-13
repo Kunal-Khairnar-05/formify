@@ -685,7 +685,7 @@ function App() {
         </header>
 
         {/* on a phone: picture, form, result, in that order; on a wide screen the form sits on the right */}
-        <main className="grid flex-1 content-start gap-6 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,1fr)_23rem] xl:grid-rows-[auto_auto_auto]">
+        <main className="grid flex-1 content-start gap-6 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,1fr)_23rem] xl:grid-rows-[1fr_auto_auto]">
           <section aria-label="Your picture" className="card flex min-w-0 flex-col gap-4 p-5">
             <Step
               number={1}
@@ -699,7 +699,7 @@ function App() {
               }
             />
             <div
-              className={`nm-inset nm-drop p-3 ${dragging ? 'outline-2 outline-offset-2 outline-[var(--primary-dark)]' : ''}`}
+              className={`nm-inset nm-drop flex flex-1 flex-col p-3 ${dragging ? 'outline-2 outline-offset-2 outline-[var(--primary-dark)]' : ''}`}
               onDragOver={(e) => {
                 e.preventDefault()
                 setDragging(true)
@@ -727,7 +727,7 @@ function App() {
               ) : (
                 <label
                   htmlFor="photo"
-                  className="flex min-h-64 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--shadow-dark)] p-6 text-center"
+                  className="flex min-h-64 flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--dash)] p-6 text-center"
                 >
                   <span className="card flex h-14 w-14 items-center justify-center">
                     <UploadIcon size={26} />
