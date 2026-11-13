@@ -896,9 +896,14 @@ function App() {
           >
             <MenuIcon />
           </button>
-          <span className="card flex h-11 w-11 flex-none items-center justify-center">
-            <img src="/favicon.svg" alt="" className="h-6 w-6" />
-          </span>
+          {/* the logo is its own tile; the hairline keeps its black edge visible on the dark page */}
+          <img
+            src="/favicon.svg"
+            alt=""
+            width={44}
+            height={44}
+            className="h-11 w-11 flex-none rounded-xl border border-[var(--line)]"
+          />
           <div className="min-w-0 flex-1">
             <p className="text-xl leading-tight font-extrabold tracking-tight">Formify</p>
             <h1 className="text-soft truncate text-sm font-semibold">{current.title}</h1>
