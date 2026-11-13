@@ -53,12 +53,15 @@ function App() {
   const [custom, setCustom] = useState<{ aspect?: number; region: Region } | null>(null)
   const [photoSize, setPhotoSize] = useState<{ width: number; height: number } | null>(null)
   const [lockShape, setLockShape] = useState(true)
+  // quarter turns used for the last signature, so Rotate can go one further; null before any
+  const [signatureTurns, setSignatureTurns] = useState<number | null>(null)
   const lastFile = useRef<File | undefined>(undefined)
   const resolved = resolveSpec(parseFields(fields))
 
   // the crop is held to the output's shape unless the user switches that off
+  // a signature is cut to its ink afterwards, so its crop box is always free-form
   const aspect =
-    lockShape && photoSize && resolved.ok
+    kind === 'photo' && lockShape && photoSize && resolved.ok
       ? fractionAspect(
           resolved.spec.widthPx / resolved.spec.heightPx,
           photoSize.width,
@@ -93,12 +96,14 @@ function App() {
     })
     setPhotoSize(null)
     setCustom(null)
+    setSignatureTurns(null)
     clearResult()
     setInfo(`Move the box or drag its corners to crop, then press Create ${kind}.`)
   }
 
   function onKind(next: Kind) {
     setKind(next)
+    setSignatureTurns(null)
     clearResult()
   }
 
@@ -161,7 +166,8 @@ function App() {
     ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
   }
 
-  async function onCreate() {
+  /** `turns` overrides the guess of which way up a signature is. */
+  async function onCreate(forcedTurns?: number) {
     const file = lastFile.current
     if (!file || !resolved.ok) return
     const spec = resolved.spec
@@ -172,9 +178,14 @@ function App() {
 
     try {
       if (kind === 'signature') {
-        const { image, stages, timingsMs } = await processSignature(file, spec, chosen)
+        const result = await processSignature(file, spec, chosen, forcedTurns)
+        const { image, stages, timingsMs } = result
+        setSignatureTurns(result.turns)
         const ctx = drawSource(image)
-        setInfo(`${loaded} -> ${image.width} x ${image.height} px. ${timingText(timingsMs)}`)
+        const turned = result.turns === 0 ? '' : `, turned ${result.turns * 90} degrees`
+        setInfo(
+          `${loaded} -> ${image.width} x ${image.height} px${turned}. ${timingText(timingsMs)}`,
+        )
         if (!stages) {
           setResultLine('No signature found. Use a photo of dark ink on plain, light paper.')
           return
@@ -269,10 +280,19 @@ function App() {
         id="create"
         className="mt-3 rounded bg-neutral-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
         disabled={!preview || !resolved.ok}
-        onClick={onCreate}
+        onClick={() => onCreate()}
       >
         Create {kind}
       </button>
+      {kind === 'signature' && signatureTurns !== null && (
+        <button
+          id="rotate"
+          className="mt-3 ml-3 rounded border border-neutral-400 px-3 py-2 text-sm"
+          onClick={() => onCreate((signatureTurns + 1) % 4)}
+        >
+          Rotate
+        </button>
+      )}
       {preview && (
         <button
           id="crop-reset"
@@ -282,7 +302,7 @@ function App() {
           Reset crop
         </button>
       )}
-      {preview && (
+      {preview && kind === 'photo' && (
         <label className="mt-3 flex items-center gap-2 text-sm">
           <input
             id="crop-lock"

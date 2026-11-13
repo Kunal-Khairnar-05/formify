@@ -1,13 +1,16 @@
 import type { Region } from '../crop/region'
-import { composite } from '../pipeline/composite'
 import { exportJpeg, type Exported } from '../pipeline/exportJpeg'
 import { loadImage } from '../pipeline/loadImage'
+import { rotateQuarter } from '../pipeline/orient'
 import { cropSource } from '../pipeline/precrop'
 import { cropAndResize } from '../pipeline/resize'
 import type { Rect, Spec } from '../pipeline/types'
 import { signatureBox } from './box'
 import { pickContrast } from './contrast'
 import { darkness, inkBounds, inkMask, luminance } from './ink'
+import { dropFragments, dropLines } from './lines'
+import { paintInk } from './paint'
+import { uprightTurns } from './upright'
 
 // a signature needs less detail than a face, and the ink search is quicker on a smaller image
 const WORKING_EDGE = 1024
@@ -20,8 +23,12 @@ const MIN_INK = 3
 const MARGIN = 0.08
 
 export interface ProcessedSignature {
-  /** The photo after loading and the user's crop. */
+  /** The photo after loading, the user's crop, and turning upright. */
   image: ImageBitmap
+  /** Clockwise quarter turns applied. */
+  turns: number
+  /** True when the turns were guessed from the ink rather than given by the user. */
+  guessed: boolean
   /** Present only when ink was found. */
   stages?: {
     mask: Float32Array
@@ -37,12 +44,33 @@ export interface ProcessedSignature {
   timingsMs: Record<string, number>
 }
 
+/** Find the pen strokes: everything thin and dark, minus the paper's own lines. */
+function findInk(image: ImageBitmap): { mask: Float32Array; ink: Rect | null; pixels: ImageData } {
+  const { width, height } = image
+  const canvas = new OffscreenCanvas(width, height)
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  ctx.drawImage(image, 0, 0)
+  const pixels = ctx.getImageData(0, 0, width, height)
+
+  const radius = Math.max(4, Math.round(Math.max(width, height) * MAX_STROKE))
+  const dark = darkness(luminance(pixels), width, height, radius)
+  const contrast = pickContrast(dark)
+  const mask = dropFragments(
+    inkMask(dropLines(dark, width, height, contrast), contrast),
+    width,
+    height,
+  )
+  return { mask, ink: inkBounds(mask, width, height, MIN_INK), pixels }
+}
+
 /** Signature pipeline: photo of a signature on paper in, clean spec-sized JPEG out. */
 export async function processSignature(
   file: Blob,
   spec: Spec,
   /** Part of the photo to use, chosen by the user; the whole photo when left out. */
   region?: Region,
+  /** Clockwise quarter turns to apply; guessed from the ink when left out. */
+  turns?: number,
 ): Promise<ProcessedSignature> {
   const timingsMs: Record<string, number> = {}
   let mark = performance.now()
@@ -52,29 +80,50 @@ export async function processSignature(
     mark = now
   }
 
-  const image = await loadImage(region ? await cropSource(file, region) : file, WORKING_EDGE)
-  const { width, height } = image
+  let image = await loadImage(region ? await cropSource(file, region) : file, WORKING_EDGE)
   lap('load')
 
-  const canvas = new OffscreenCanvas(width, height)
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-  ctx.drawImage(image, 0, 0)
-  const gray = luminance(ctx.getImageData(0, 0, width, height))
-
-  const radius = Math.max(4, Math.round(Math.max(width, height) * MAX_STROKE))
-  const dark = darkness(gray, width, height, radius)
-  const mask = inkMask(dark, pickContrast(dark))
-  const ink = inkBounds(mask, width, height, MIN_INK)
+  let found = findInk(image)
   lap('ink')
-  if (!ink) return { image, timingsMs }
+
+  // which way up: the user's choice, or a guess from the ink
+  const guessed = turns === undefined
+  let confident = true
+  let applied = turns ?? 0
+  if (guessed && found.ink) {
+    const guess = uprightTurns(found.mask, image.width, found.ink)
+    applied = guess.turns
+    confident = guess.confident
+  }
+  if (applied !== 0) {
+    image = rotateQuarter(image, applied)
+    // the lines and the stroke shapes are found afresh in the turned picture
+    found = findInk(image)
+    lap('turn')
+  }
+
+  const { mask, ink, pixels } = found
+  const { width, height } = image
+  if (!ink) return { image, turns: applied, guessed, timingsMs }
 
   const box = signatureBox(ink, spec.widthPx / spec.heightPx, MARGIN)
-  // only the ink is kept; the paper, with its colour and shadows, becomes the background
-  const pixels = composite(image, mask, spec.background)
-  const final = await cropAndResize(pixels, box, spec.widthPx, spec.heightPx, spec.background)
+  // how many photo pixels become one output pixel
+  const shrink = box.width / spec.widthPx
+  // only the ink is kept, redrawn in one colour; the paper becomes the background
+  const painted = paintInk(pixels, mask, spec.background, shrink)
+  const final = await cropAndResize(painted, box, spec.widthPx, spec.heightPx, spec.background)
   lap('crop, resize')
 
   const warnings: string[] = []
+  if (guessed && applied !== 0) {
+    warnings.push(
+      `The signature looked ${applied === 2 ? 'upside down' : 'sideways'}, so it was turned. ` +
+        'Use Rotate if it is still the wrong way round.',
+    )
+  }
+  if (guessed && !confident) {
+    warnings.push('Could not tell for sure which way up the signature is. Use Rotate if it is wrong.')
+  }
   if (box.width < spec.widthPx) {
     warnings.push(
       `Low resolution: the signature is ${box.width} x ${box.height} px in the photo but the form ` +
@@ -92,5 +141,11 @@ export async function processSignature(
   const exported = await exportJpeg(final, spec)
   lap('encode')
 
-  return { image, stages: { mask, ink, box, final, exported, warnings }, timingsMs }
+  return {
+    image,
+    turns: applied,
+    guessed,
+    stages: { mask, ink, box, final, exported, warnings },
+    timingsMs,
+  }
 }
