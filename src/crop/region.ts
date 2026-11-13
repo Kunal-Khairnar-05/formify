@@ -17,10 +17,57 @@ export function isFull(region: Region): boolean {
 }
 
 /**
+ * The shape to hold a region to, in the region's own units: fraction of the photo's width
+ * over fraction of its height. A 3:4 output on a 4:3 photo gives (3/4) / (4/3).
+ */
+export function fractionAspect(outputRatio: number, photoWidth: number, photoHeight: number): number {
+  return (outputRatio * photoHeight) / photoWidth
+}
+
+/** The largest region of the given shape that fits in the photo, centred. */
+export function fitRegion(aspect: number): Region {
+  const width = Math.min(1, aspect)
+  const height = width / aspect
+  return { x: (1 - width) / 2, y: (1 - height) / 2, width, height }
+}
+
+/** A corner drag that keeps the region's shape: the opposite corner stays where it is. */
+function resizeLocked(start: Region, handle: Handle, dx: number, dy: number, aspect: number): Region {
+  const west = handle === 'nw' || handle === 'sw'
+  const north = handle === 'nw' || handle === 'ne'
+  const anchorX = west ? start.x + start.width : start.x
+  const anchorY = north ? start.y + start.height : start.y
+  const roomX = west ? anchorX : 1 - anchorX
+  const roomY = north ? anchorY : 1 - anchorY
+
+  // follow whichever direction the pointer has gone further in
+  const byWidth = start.width + (west ? -dx : dx)
+  const byHeight = (start.height + (north ? -dy : dy)) * aspect
+  const largest = Math.min(roomX, roomY * aspect)
+  const smallest = Math.min(largest, Math.max(MIN_SIZE, MIN_SIZE * aspect))
+  const width = clamp(Math.max(byWidth, byHeight), smallest, largest)
+  const height = width / aspect
+
+  return {
+    x: west ? anchorX - width : anchorX,
+    y: north ? anchorY - height : anchorY,
+    width,
+    height,
+  }
+}
+
+/**
  * Where the region ends up after dragging `handle` by (dx, dy), both fractions of the photo.
  * `start` is the region when the drag began, so the result never drifts.
+ * With `aspect` (see fractionAspect) a resize keeps that shape.
  */
-export function dragRegion(start: Region, handle: Handle, dx: number, dy: number): Region {
+export function dragRegion(
+  start: Region,
+  handle: Handle,
+  dx: number,
+  dy: number,
+  aspect?: number,
+): Region {
   if (handle === 'move') {
     return {
       ...start,
@@ -28,6 +75,8 @@ export function dragRegion(start: Region, handle: Handle, dx: number, dy: number
       y: clamp(start.y + dy, 0, 1 - start.height),
     }
   }
+
+  if (aspect !== undefined) return resizeLocked(start, handle, dx, dy, aspect)
 
   let left = start.x
   let top = start.y

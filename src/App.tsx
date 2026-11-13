@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { CropBox } from './CropBox'
-import { FULL, isFull, type Region } from './crop/region'
+import { fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
 import { processPhoto, type Quality } from './pipeline/process'
 import type { Spec } from './pipeline/types'
 import { DEFAULT_FIELDS, parseFields, type SpecFields } from './spec/fields'
@@ -27,9 +27,26 @@ function App() {
   const [quality, setQuality] = useState<Quality>('fast')
   const [fields, setFields] = useState<SpecFields>(DEFAULT_FIELDS)
   const [preview, setPreview] = useState<string | null>(null)
-  const [region, setRegion] = useState<Region>(FULL)
+  // the user's own crop, with the shape it was made for; null means the starting crop
+  const [custom, setCustom] = useState<{ aspect?: number; region: Region } | null>(null)
+  const [photoSize, setPhotoSize] = useState<{ width: number; height: number } | null>(null)
+  const [lockShape, setLockShape] = useState(true)
   const lastFile = useRef<File | undefined>(undefined)
   const resolved = resolveSpec(parseFields(fields))
+
+  // the crop is held to the output's shape unless the user switches that off
+  const aspect =
+    lockShape && photoSize && resolved.ok
+      ? fractionAspect(
+          resolved.spec.widthPx / resolved.spec.heightPx,
+          photoSize.width,
+          photoSize.height,
+        )
+      : undefined
+  const startRegion = aspect === undefined ? FULL : fitRegion(aspect)
+  // a new output shape, or switching the lock, starts the crop again
+  const region = custom && custom.aspect === aspect ? custom.region : startRegion
+  const setRegion = (next: Region) => setCustom({ aspect, region: next })
 
   function clearResult() {
     setResultLine('')
@@ -52,9 +69,10 @@ function App() {
       if (previous) URL.revokeObjectURL(previous)
       return URL.createObjectURL(file)
     })
-    setRegion(FULL)
+    setPhotoSize(null)
+    setCustom(null)
     clearResult()
-    setInfo('Drag the corners to crop if you need to, then press Create photo.')
+    setInfo('Move the box or drag its corners to crop, then press Create photo.')
   }
 
   async function onCreate() {
@@ -181,12 +199,39 @@ function App() {
       >
         Create photo
       </button>
-      {preview && !isFull(region) && (
-        <button id="crop-reset" className="mt-3 ml-3 text-sm underline" onClick={() => setRegion(FULL)}>
+      {preview && (
+        <button
+          id="crop-reset"
+          className="mt-3 ml-3 text-sm underline"
+          onClick={() => setCustom(null)}
+        >
           Reset crop
         </button>
       )}
-      {preview && <CropBox src={preview} region={region} onChange={setRegion} />}
+      {preview && (
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input
+            id="crop-lock"
+            type="checkbox"
+            checked={lockShape}
+            onChange={(e) => {
+              setLockShape(e.target.checked)
+              // switching to free-form keeps the box where it is
+              if (!e.target.checked) setCustom({ aspect: undefined, region })
+            }}
+          />
+          Keep the crop in the shape of the output
+        </label>
+      )}
+      {preview && (
+        <CropBox
+          src={preview}
+          region={region}
+          aspect={aspect}
+          onChange={setRegion}
+          onSize={(width, height) => setPhotoSize({ width, height })}
+        />
+      )}
       <p className="mt-3 text-sm text-neutral-600">{info}</p>
       <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
       {resultLine && <p className="mt-3 font-mono text-sm">{resultLine}</p>}
