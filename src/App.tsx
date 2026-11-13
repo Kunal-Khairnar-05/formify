@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { fetchTotals, reportMade } from './counter/client'
 import type { Totals } from './counter/server'
 import { CropBox } from './CropBox'
+import { FlipCounter } from './FlipCounter'
 import { fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
 import {
   AlertIcon,
@@ -840,10 +841,10 @@ function App() {
             <p className="text-xl leading-tight font-extrabold tracking-tight">Formify</p>
             <h1 className="text-soft truncate text-sm font-semibold">{current.title}</h1>
           </div>
-          <p className="card hidden flex-none items-center gap-2 !rounded-full px-3 py-1.5 text-xs font-bold md:flex">
-            <LockIcon size={16} />
-            On-device
-          </p>
+          {/* how many pictures everyone has made; each new one turns the cards over */}
+          {made && made.total > 0 && (
+            <FlipCounter value={made.total} label={made.total === 1 ? 'picture made' : 'pictures made'} />
+          )}
         </header>
 
         {/* on a phone: picture, form, result, in that order; on a wide screen the form sits on the right */}
@@ -1200,15 +1201,7 @@ function App() {
         </main>
 
         <footer className="text-soft flex flex-wrap items-center justify-between gap-2 px-4 pb-6 text-xs sm:px-8">
-          <div className="flex flex-col gap-1">
-            {made && made.total > 0 && (
-              <p id="made-count" className="font-semibold text-[var(--ink)]">
-                {made.total.toLocaleString('en-IN')} {made.total === 1 ? 'picture' : 'pictures'} made with
-                Formify so far
-              </p>
-            )}
-            <p>Check the result against your portal's own instructions before you upload.</p>
-          </div>
+          <p>Check the result against your portal's own instructions before you upload.</p>
           <p id="credit">
             Developed by{' '}
             <a

@@ -1,11 +1,41 @@
 /// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+
+/*
+ * On Vercel the count is kept by the function in api/count.ts. The dev server has no
+ * functions, so it answers /api/count itself, from a number held in memory that starts
+ * again with the server: enough to see the counter work while developing.
+ */
+const devCounter: Plugin = {
+  name: 'dev-counter',
+  configureServer(server) {
+    const made = { photo: 128, signature: 61 }
+    server.middlewares.use('/api/count', (request, response) => {
+      const answer = () => {
+        response.setHeader('Content-Type', 'application/json')
+        response.end(JSON.stringify({ ...made, total: made.photo + made.signature }))
+      }
+      if (request.method !== 'POST') return answer()
+      let body = ''
+      request.on('data', (chunk) => (body += chunk))
+      request.on('end', () => {
+        try {
+          const { kind } = JSON.parse(body) as { kind?: string }
+          if (kind === 'photo' || kind === 'signature') made[kind]++
+        } catch {
+          // not JSON: nothing is counted
+        }
+        answer()
+      })
+    })
+  },
+}
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), devCounter],
   // onnxruntime-web and jSquash ship their own .wasm files; pre-bundling breaks their loaders
   optimizeDeps: { exclude: ['onnxruntime-web', '@jsquash/jpeg'] },
   // cross-origin isolation lets the WebAssembly runtimes use threads (SharedArrayBuffer)
