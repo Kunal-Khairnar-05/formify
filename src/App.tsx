@@ -17,7 +17,7 @@ import {
   SunIcon,
   UploadIcon,
 } from './icons'
-import type { Exported } from './pipeline/exportJpeg'
+import type { Exported } from './pipeline/export'
 import { processPhoto, type Quality } from './pipeline/process'
 import type { Rect, Spec } from './pipeline/types'
 import { processSignature } from './signature/process'
@@ -71,6 +71,7 @@ interface Summary {
   /** Used in the name of the downloaded file. */
   widthPx: number
   heightPx: number
+  extension: string
   /** Extra notes about how the file was made. */
   notes: string[]
 }
@@ -345,10 +346,14 @@ function App() {
     finalCanvas.height = final.height
     finalCanvas.getContext('2d')!.putImageData(final, 0, 0)
 
+    const extension = spec.extension ?? spec.format
     if (!exported) {
       setFailure(
-        `${spec.widthPx} x ${spec.heightPx} px cannot fit into ${spec.maxKb} KB at a readable quality. ` +
-          'Check the size and the KB limit against the portal.',
+        spec.format === 'png'
+          ? `As a PNG this picture is larger than ${spec.maxKb} KB, and a PNG cannot be made smaller. ` +
+              'If the portal allows JPG, choose that; otherwise check the size and the KB limit.'
+          : `${spec.widthPx} x ${spec.heightPx} px cannot fit into ${spec.maxKb} KB at a readable quality. ` +
+              'Check the size and the KB limit against the portal.',
       )
       return
     }
@@ -357,7 +362,11 @@ function App() {
     const sizeOk =
       (spec.maxKb === undefined || measured.bytes <= spec.maxKb * 1000) &&
       (spec.minKb === undefined || measured.bytes >= spec.minKb * 1024)
-    const notes = [`Saved at JPG quality ${quality}.`]
+    const notes = [
+      spec.format === 'png'
+        ? 'Saved as a PNG, which keeps every pixel exactly.'
+        : `Saved at JPG quality ${quality}.`,
+    ]
     if (paddedBytes > 0) {
       notes.push(`Padded by ${(paddedBytes / 1000).toFixed(1)} KB to reach the minimum size.`)
     }
@@ -378,18 +387,20 @@ function App() {
         },
         {
           label: 'Format',
-          value: measured.format === 'jpg' ? 'JPG' : 'Unknown',
-          wanted: 'Form asks for JPG',
+          value: measured.format === 'unknown' ? 'Unknown' : `${measured.format.toUpperCase()} (.${extension})`,
+          wanted: `Form asks for ${extension.toUpperCase()}`,
           ok: measured.format === spec.format,
         },
       ],
       widthPx: measured.widthPx,
       heightPx: measured.heightPx,
+      extension,
       notes,
     })
     if (problems.length === 0) {
       // copy into a fresh buffer: Blob does not accept a view over a shared one
-      setDownload(URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/jpeg' })))
+      const type = spec.format === 'png' ? 'image/png' : 'image/jpeg'
+      setDownload(URL.createObjectURL(new Blob([bytes.slice()], { type })))
     }
   }
 
@@ -761,7 +772,7 @@ function App() {
                       <a
                         className="nm-btn nm-btn-primary"
                         href={download}
-                        download={`formify-${kind}-${summary.widthPx}x${summary.heightPx}.jpg`}
+                        download={`formify-${kind}-${summary.widthPx}x${summary.heightPx}.${summary.extension}`}
                       >
                         <DownloadIcon />
                         Download

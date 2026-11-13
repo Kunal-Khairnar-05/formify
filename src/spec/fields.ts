@@ -1,3 +1,4 @@
+import type { Extension } from '../pipeline/types'
 import type { SpecInput, Unit } from './units'
 
 /** The spec form's raw text, exactly as typed. */
@@ -8,6 +9,7 @@ export interface SpecFields {
   dpi: string
   minKb: string
   maxKb: string
+  format: Extension
   background: string
 }
 
@@ -19,6 +21,7 @@ export const DEFAULT_FIELDS: SpecFields = {
   dpi: '300',
   minKb: '',
   maxKb: '50',
+  format: 'jpg',
   background: '#ffffff',
 }
 
@@ -30,6 +33,7 @@ export const SIGNATURE_FIELDS: SpecFields = {
   dpi: '200',
   minKb: '10',
   maxKb: '20',
+  format: 'jpg',
   background: '#ffffff',
 }
 
@@ -48,6 +52,7 @@ export function parseFields(fields: SpecFields): SpecInput {
     dpi: required(fields.dpi),
     minKb: optional(fields.minKb),
     maxKb: optional(fields.maxKb),
+    format: fields.format,
     background: fields.background,
   }
 }

@@ -7,7 +7,14 @@ describe('parseFields', () => {
     const result = resolveSpec(parseFields(DEFAULT_FIELDS))
     expect(result).toEqual({
       ok: true,
-      spec: { widthPx: 413, heightPx: 531, maxKb: 50, format: 'jpg', background: '#ffffff' },
+      spec: {
+        widthPx: 413,
+        heightPx: 531,
+        maxKb: 50,
+        format: 'jpg',
+        extension: 'jpg',
+        background: '#ffffff',
+      },
     })
   })
 
@@ -41,5 +48,19 @@ describe('parseFields', () => {
   it('reports a non-numeric limit', () => {
     const result = resolveSpec(parseFields({ ...DEFAULT_FIELDS, maxKb: 'fifty' }))
     expect(result.ok).toBe(false)
+  })
+})
+
+describe('parseFields with a file type', () => {
+  it('keeps JPG and JPEG as one format with two file endings', () => {
+    for (const format of ['jpg', 'jpeg'] as const) {
+      const result = resolveSpec(parseFields({ ...DEFAULT_FIELDS, format }))
+      expect(result).toMatchObject({ ok: true, spec: { format: 'jpg', extension: format } })
+    }
+  })
+
+  it('passes PNG through as its own format', () => {
+    const result = resolveSpec(parseFields({ ...DEFAULT_FIELDS, format: 'png' }))
+    expect(result).toMatchObject({ ok: true, spec: { format: 'png', extension: 'png' } })
   })
 })
