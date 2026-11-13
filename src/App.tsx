@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { processPhoto } from './pipeline/process'
+import { processPhoto, type Quality } from './pipeline/process'
 import type { Spec } from './pipeline/types'
 
 // Day 1 spec: 3.5 x 4.5 cm at 300 DPI, at most 50 KB, white background
@@ -14,9 +14,12 @@ function App() {
   const [resultLine, setResultLine] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [download, setDownload] = useState<string | null>(null)
+  const [quality, setQuality] = useState<Quality>('fast')
+  const lastFile = useRef<File | undefined>(undefined)
 
-  async function onFile(file: File | undefined) {
+  async function onFile(file: File | undefined, mode: Quality) {
     if (!file) return
+    lastFile.current = file
     setResultLine('')
     setWarnings([])
     setDownload((previous) => {
@@ -29,7 +32,7 @@ function App() {
     }
 
     try {
-      const { image, turns, faceCount, stages, timingsMs } = await processPhoto(file, SPEC)
+      const { image, turns, faceCount, stages, timingsMs } = await processPhoto(file, SPEC, mode)
 
       const source = sourceRef.current!
       source.width = image.width
@@ -116,8 +119,21 @@ function App() {
         className="mt-4 block"
         type="file"
         accept="image/*"
-        onChange={(e) => onFile(e.target.files?.[0])}
+        onChange={(e) => onFile(e.target.files?.[0], quality)}
       />
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input
+          id="fine-edges"
+          type="checkbox"
+          checked={quality === 'fine'}
+          onChange={(e) => {
+            const next: Quality = e.target.checked ? 'fine' : 'fast'
+            setQuality(next)
+            onFile(lastFile.current, next)
+          }}
+        />
+        Finer hair edges (downloads a 26 MB model, slower)
+      </label>
       <p className="mt-3 text-sm text-neutral-600">{info}</p>
       <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
       {resultLine && <p className="mt-3 font-mono text-sm">{resultLine}</p>}
