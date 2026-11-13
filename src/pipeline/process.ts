@@ -4,10 +4,12 @@ import { softenEdge } from './edge'
 import { exportJpeg, type Exported } from './exportJpeg'
 import { faceGeometry } from './faceGeometry'
 import { dilate, limitTo, softOutside } from './gate'
+import type { Region } from '../crop/region'
 import { loadImage } from './loadImage'
 import { hairTop, keepConnected, sharpenMask } from './mask'
 import { matte } from './matte'
 import { detectUpright } from './orient'
+import { cropSource } from './precrop'
 import { cropAndResize } from './resize'
 import { segment } from './segment'
 import type { FaceGeometry, Rect, Spec } from './types'
@@ -50,6 +52,8 @@ export async function processPhoto(
   file: Blob,
   spec: Spec,
   quality: Quality = 'fast',
+  /** Part of the photo to use, chosen by the user; the whole photo when left out. */
+  region?: Region,
 ): Promise<Processed> {
   const timingsMs: Record<string, number> = {}
   let mark = performance.now()
@@ -59,7 +63,7 @@ export async function processPhoto(
     mark = now
   }
 
-  const loaded = await loadImage(file)
+  const loaded = await loadImage(region ? await cropSource(file, region) : file)
   lap('load')
 
   const { image, faces, turns } = await detectUpright(loaded)
@@ -112,6 +116,12 @@ export async function processPhoto(
   }
   if (face.crown.y === 0) {
     warnings.push('The top of the head is cut off in this photo.')
+  }
+  if (box.x < 0 || box.x + box.width > image.width) {
+    warnings.push(
+      'There is not enough room beside the head in this photo or crop, so part of the result ' +
+        'is filled with the background colour. Use a wider crop or a photo taken from further away.',
+    )
   }
 
   const exported = await exportJpeg(final, spec)
