@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  badFields,
   checkSpec,
   cropCaution,
   resolveChecked,
@@ -306,6 +307,72 @@ describe('suggest', () => {
         maxKb: number(first.patch.maxKb, before.maxKb),
       }
       expect(resolveChecked(after, 'signature').ok).toBe(true)
+    }
+  })
+})
+
+describe('badFields', () => {
+  const bad = (change: Partial<SpecInput>, kind: Kind = 'photo') => badFields(input(change), kind).sort()
+
+  it('marks nothing when the request can be made', () => {
+    expect(bad({})).toEqual([])
+    // a caution is not an error
+    expect(bad({ width: 4.5, height: 3.5 })).toEqual([])
+  })
+
+  it('marks an empty or negative size', () => {
+    expect(bad({ width: Number.NaN })).toEqual(['width'])
+    expect(bad({ height: -2 })).toEqual(['height'])
+    expect(bad({ width: 0, height: 0 })).toEqual(['height', 'width'])
+  })
+
+  it('marks the DPI when a physical unit has none, but not for pixels', () => {
+    expect(bad({ dpi: Number.NaN })).toEqual(['dpi'])
+    expect(bad({ width: 200, height: 230, unit: 'px', dpi: Number.NaN })).toEqual([])
+  })
+
+  it('marks both limits when they are the wrong way round or too close', () => {
+    expect(bad({ minKb: 60, maxKb: 50 })).toEqual(['maxKb', 'minKb'])
+    expect(bad({ minKb: 49, maxKb: 50 })).toEqual(['maxKb', 'minKb'])
+  })
+
+  it('marks only the side that is a fraction of a pixel', () => {
+    expect(bad({ width: 200.5, height: 230, unit: 'px' })).toEqual(['width'])
+  })
+
+  it('marks the side that comes out too small or too large', () => {
+    // 0.1 cm at 300 DPI is 12 px
+    expect(bad({ width: 0.1 })).toEqual(['width'])
+    expect(bad({ width: 200, height: 5000, unit: 'px' })).toEqual(['height'])
+  })
+
+  it('marks the maximum when the size cannot fit in it', () => {
+    expect(bad({ width: 4000, height: 4000, unit: 'px', maxKb: 20 })).toEqual(['maxKb'])
+  })
+
+  it('marks the maximum, and the file type for a PNG, when the measured photo cannot meet it', () => {
+    const jpg = badFields(input({ maxKb: 5 }), 'photo', { smallestBytes: 12_000, bestBytes: 76_000 })
+    expect(jpg).toEqual(['maxKb'])
+    const png = badFields(input({ format: 'png', maxKb: 50 }), 'photo', {
+      smallestBytes: 430_000,
+      bestBytes: 430_000,
+    })
+    expect(png.sort()).toEqual(['format', 'maxKb'])
+  })
+
+  it('marks something whenever the request is refused', () => {
+    const refused: Partial<SpecInput>[] = [
+      { width: Number.NaN },
+      { dpi: 0 },
+      { minKb: 0 },
+      { minKb: 49, maxKb: 50 },
+      { width: 200.5, height: 230, unit: 'px' },
+      { width: 9000, height: 100, unit: 'px' },
+      { width: 4000, height: 4000, unit: 'px', maxKb: 20 },
+    ]
+    for (const change of refused) {
+      expect(resolveChecked(input(change), 'photo').ok).toBe(false)
+      expect(bad(change).length).toBeGreaterThan(0)
     }
   })
 })

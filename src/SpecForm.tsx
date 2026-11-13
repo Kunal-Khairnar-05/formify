@@ -3,7 +3,7 @@ import { AlertIcon, ChevronIcon } from './icons'
 import type { Extension } from './pipeline/types'
 import type { SpecFields } from './spec/fields'
 import { parseInstructions } from './spec/instructions'
-import type { Checked, Suggestion } from './spec/feasibility'
+import type { Checked, FieldName, Suggestion } from './spec/feasibility'
 import type { Unit } from './spec/units'
 
 const UNITS: { value: Unit; label: string }[] = [
@@ -48,11 +48,13 @@ interface Props {
   resolved: Checked
   /** Changes that would fix a problem or suit the picture better. */
   suggestions: Suggestion[]
+  /** The boxes whose values cannot be met, to mark in red. */
+  bad: FieldName[]
   onChange: (fields: SpecFields) => void
 }
 
 /** What the form asks for: size, unit, DPI, file size limits and background colour. */
-export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Props) {
+export function SpecForm({ kind, fields, resolved, suggestions, bad, onChange }: Props) {
   const set = (patch: Partial<SpecFields>) => onChange({ ...fields, ...patch })
   const [pasted, setPasted] = useState('')
   // null until "Fill from text" has been pressed
@@ -63,6 +65,11 @@ export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Prop
     setFound(parsed.found)
     set(parsed.fields)
   }
+
+  // a box that cannot be met: red label, red ring
+  const labelOf = (name: FieldName) => (bad.includes(name) ? `${label} nm-danger` : label)
+  const boxOf = (name: FieldName) => (bad.includes(name) ? 'nm-field nm-field-bad' : 'nm-field')
+  const invalid = (name: FieldName) => (bad.includes(name) ? true : undefined)
 
   const unitLabel = UNITS.find((unit) => unit.value === fields.unit)!.label
   const isPreset = (preset: Partial<SpecFields>) =>
@@ -120,11 +127,12 @@ export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Prop
           ))}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <label className={label}>
+          <label className={labelOf('width')}>
             Width
-            <span className="nm-field">
+            <span className={boxOf('width')}>
               <input
                 id="spec-width"
+                aria-invalid={invalid('width')}
                 inputMode="decimal"
                 value={fields.width}
                 onChange={(e) => set({ width: e.target.value })}
@@ -132,11 +140,12 @@ export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Prop
               <span className="unit">{unitLabel}</span>
             </span>
           </label>
-          <label className={label}>
+          <label className={labelOf('height')}>
             Height
-            <span className="nm-field">
+            <span className={boxOf('height')}>
               <input
                 id="spec-height"
+                aria-invalid={invalid('height')}
                 inputMode="decimal"
                 value={fields.height}
                 onChange={(e) => set({ height: e.target.value })}
@@ -164,11 +173,12 @@ export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Prop
               </span>
             </span>
           </label>
-          <label className={label}>
+          <label className={labelOf('dpi')}>
             Print quality
-            <span className="nm-field">
+            <span className={boxOf('dpi')}>
               <input
                 id="spec-dpi"
+                aria-invalid={invalid('dpi')}
                 inputMode="numeric"
                 disabled={fields.unit === 'px'}
                 value={fields.dpi}
@@ -183,11 +193,12 @@ export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Prop
       <div className="flex flex-col gap-3">
         <p className={group}>FILE SIZE</p>
         <div className="grid grid-cols-2 gap-3">
-          <label className={label}>
+          <label className={labelOf('minKb')}>
             At least
-            <span className="nm-field">
+            <span className={boxOf('minKb')}>
               <input
                 id="spec-min-kb"
+                aria-invalid={invalid('minKb')}
                 inputMode="decimal"
                 placeholder="Any"
                 value={fields.minKb}
@@ -196,11 +207,12 @@ export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Prop
               <span className="unit">KB</span>
             </span>
           </label>
-          <label className={label}>
+          <label className={labelOf('maxKb')}>
             At most
-            <span className="nm-field">
+            <span className={boxOf('maxKb')}>
               <input
                 id="spec-max-kb"
+                aria-invalid={invalid('maxKb')}
                 inputMode="decimal"
                 placeholder="Any"
                 value={fields.maxKb}
@@ -214,7 +226,11 @@ export function SpecForm({ kind, fields, resolved, suggestions, onChange }: Prop
 
       <div className="flex flex-col gap-3">
         <p className={group}>FILE TYPE</p>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="File type">
+        <div
+          className={`flex w-fit flex-wrap gap-2 rounded-full ${bad.includes('format') ? 'nm-field-bad' : ''}`}
+          role="group"
+          aria-label="File type"
+        >
           {FILE_TYPES.map((type) => (
             <button
               key={type.value}
