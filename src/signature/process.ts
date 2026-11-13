@@ -1,5 +1,5 @@
 import type { Region } from '../crop/region'
-import { exportImage, type Exported } from '../pipeline/export'
+import { exportImage, exportSvg, type Exported } from '../pipeline/export'
 import { loadImage } from '../pipeline/loadImage'
 import { rotateQuarter } from '../pipeline/orient'
 import { cropSource } from '../pipeline/precrop'
@@ -8,7 +8,8 @@ import { signatureBox } from './box'
 import { pickContrast } from './contrast'
 import { darkness, inkBounds, inkMask, luminance } from './ink'
 import { dropFragments, dropLines } from './lines'
-import { drawSignature } from './paint'
+import { drawSignature, inkCss } from './paint'
+import { padSvg, signatureSvg } from './svg'
 import { uprightTurns } from './upright'
 
 // a signature needs less detail than a face, and the ink search is quicker on a smaller image
@@ -157,8 +158,17 @@ export async function processSignature(
     )
   }
 
-  await onStage?.('Fitting the file size')
-  const exported = await exportImage(final, spec)
+  let exported: Exported | null
+  if (spec.format === 'svg') {
+    await onStage?.('Tracing the ink into curves')
+    // the strict reading of a maximum: 1 KB as 1000 bytes
+    const maxBytes = spec.maxKb === undefined ? Infinity : spec.maxKb * 1000
+    const svg = signatureSvg(mask, width, height, box, spec, inkCss(pixels.data, mask), maxBytes)
+    exported = svg ? exportSvg(svg, spec, padSvg) : null
+  } else {
+    await onStage?.('Fitting the file size')
+    exported = await exportImage(final, spec)
+  }
   lap('encode')
 
   return {

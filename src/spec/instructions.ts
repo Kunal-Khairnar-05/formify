@@ -133,11 +133,12 @@ export function findDpi(text: string): string | null {
  * The file type the text asks for, when it names exactly one. "JPG or PNG" is left alone:
  * the choice is then the user's.
  */
-export function findFormat(text: string): 'jpg' | 'jpeg' | 'png' | null {
+export function findFormat(text: string): 'jpg' | 'jpeg' | 'png' | 'svg' | null {
   const has = (word: string) => new RegExp(String.raw`(?<![a-z])\.?${word}(?![a-z])`, 'i').test(text)
   const jpg = has('jpg')
   const jpeg = has('jpeg')
   const png = has('png')
+  if (has('svg')) return jpg || jpeg || png ? null : 'svg'
   if (png) return jpg || jpeg ? null : 'png'
   // both spellings together means either will do; the shorter one is the more common ending
   if (jpg) return 'jpg'

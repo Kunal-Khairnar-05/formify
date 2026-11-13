@@ -31,6 +31,11 @@ const FILE_TYPES: { value: Extension; label: string; hint: string }[] = [
   { value: 'jpg', label: 'JPG', hint: 'What most forms ask for. The file ends in .jpg' },
   { value: 'jpeg', label: 'JPEG', hint: 'The same as JPG, for portals that insist on .jpeg' },
   { value: 'png', label: 'PNG', hint: 'Only if the form asks for PNG: much larger files. The file ends in .png' },
+  {
+    value: 'svg',
+    label: 'SVG',
+    hint: 'A drawing, not pixels: sharp at any size. Check that your portal accepts it. The file ends in .svg',
+  },
 ]
 
 const BACKGROUNDS = [
@@ -231,7 +236,8 @@ export function SpecForm({ kind, fields, resolved, suggestions, bad, onChange }:
           role="group"
           aria-label="File type of the result"
         >
-          {FILE_TYPES.map((type) => (
+          {/* an SVG is traced from ink, so it is offered for a signature only */}
+          {FILE_TYPES.filter((type) => type.value !== 'svg' || kind === 'signature').map((type) => (
             <button
               key={type.value}
               id={`spec-format-${type.value}`}

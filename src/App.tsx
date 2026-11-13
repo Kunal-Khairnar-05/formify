@@ -74,6 +74,8 @@ interface Summary {
   widthPx: number
   heightPx: number
   extension: string
+  /** True for an SVG, which is shown as the drawing itself, enlarged. */
+  vector: boolean
   /** The file's size and the form's limits, for the meter. */
   bytes: number
   minKb?: number
@@ -564,7 +566,10 @@ function App() {
     const extension = spec.extension ?? spec.format
     if (!exported) {
       setFailure(
-        spec.format === 'png'
+        spec.format === 'svg'
+          ? `Even drawn as simply as it can be, this signature is larger than ${spec.maxKb} KB as an SVG. ` +
+              'Raise the limit, or choose JPG or PNG.'
+          : spec.format === 'png'
           ? `As a PNG this picture is larger than ${spec.maxKb} KB, and a PNG cannot be made smaller. ` +
               'If the portal allows JPG, choose that; otherwise check the size and the KB limit.'
           : `${spec.widthPx} x ${spec.heightPx} px cannot fit into ${spec.maxKb} KB at a readable quality. ` +
@@ -578,9 +583,11 @@ function App() {
       (spec.maxKb === undefined || measured.bytes <= spec.maxKb * 1000) &&
       (spec.minKb === undefined || measured.bytes >= spec.minKb * 1024)
     const notes = [
-      spec.format === 'png'
-        ? 'Saved as a PNG, which keeps every pixel exactly.'
-        : `Saved at JPG quality ${quality}.`,
+      spec.format === 'svg'
+        ? 'Saved as an SVG: the edge of the ink traced into curves, sharp at any size.'
+        : spec.format === 'png'
+          ? 'Saved as a PNG, which keeps every pixel exactly.'
+          : `Saved at JPG quality ${quality}.`,
     ]
     if (paddedBytes > 0) {
       notes.push(`Padded by ${(paddedBytes / 1000).toFixed(1)} KB to reach the minimum size.`)
@@ -610,6 +617,7 @@ function App() {
       widthPx: measured.widthPx,
       heightPx: measured.heightPx,
       extension,
+      vector: spec.format === 'svg',
       bytes: measured.bytes,
       minKb: spec.minKb,
       maxKb: spec.maxKb,
@@ -617,7 +625,7 @@ function App() {
     })
     if (problems.length === 0) {
       // copy into a fresh buffer: Blob does not accept a view over a shared one
-      const type = spec.format === 'png' ? 'image/png' : 'image/jpeg'
+      const type = { jpg: 'image/jpeg', png: 'image/png', svg: 'image/svg+xml' }[spec.format]
       setDownload(URL.createObjectURL(new Blob([bytes.slice()], { type })))
     }
   }
@@ -1004,7 +1012,23 @@ function App() {
             )}
             {summary?.valid && <Confetti key={download} />}
             <div className={summary ? 'flex flex-col gap-5 sm:flex-row sm:items-start' : 'hidden'}>
-              <div className="flex flex-none flex-col gap-2 self-start">
+              {summary?.vector && download && (
+                <div className="flex flex-none flex-col gap-2 self-start">
+                  {/* shown several times its size: a drawing stays sharp however large */}
+                  <div className="nm-inset p-2">
+                    <img
+                      id="vector-preview"
+                      src={download}
+                      alt="Your signature as a drawing"
+                      className="block h-auto w-80 max-w-full rounded-lg"
+                    />
+                  </div>
+                  <p className="text-soft px-1 text-xs font-semibold">
+                    Shown enlarged. An SVG stays sharp at any size.
+                  </p>
+                </div>
+              )}
+              <div className={`flex flex-none flex-col gap-2 self-start ${summary?.vector ? 'hidden' : ''}`}>
                 {/* drag across the picture to compare it with the photo it was made from */}
                 <div className="nm-inset p-2">
                   <div id="compare" className="relative overflow-hidden rounded-lg">

@@ -72,7 +72,7 @@ export function resolveSpec(input: SpecInput): Resolved {
       heightPx,
       minKb,
       maxKb,
-      format: input.format === 'png' ? 'png' : 'jpg',
+      format: input.format === 'png' || input.format === 'svg' ? input.format : 'jpg',
       extension: input.format,
       background: input.background,
     },

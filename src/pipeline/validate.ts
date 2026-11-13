@@ -1,3 +1,4 @@
+import { isSvg, svgSize } from '../signature/svg'
 import { isPng } from './png'
 import type { Measurement, Spec } from './types'
 
@@ -17,6 +18,12 @@ export function measure(bytes: Uint8Array): Measurement {
     const uint32 = (at: number) =>
       ((bytes[at] << 24) | (bytes[at + 1] << 16) | (bytes[at + 2] << 8) | bytes[at + 3]) >>> 0
     return { widthPx: uint32(16), heightPx: uint32(20), bytes: bytes.length, format: 'png' }
+  }
+
+  // an SVG states its size on its opening tag
+  if (isSvg(bytes)) {
+    const size = svgSize(bytes)
+    return size ? { ...size, bytes: bytes.length, format: 'svg' } : { ...UNKNOWN, bytes: bytes.length }
   }
 
   // every JPEG starts with the SOI marker FF D8

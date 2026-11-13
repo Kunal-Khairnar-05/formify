@@ -1,8 +1,11 @@
-/** How the picture is stored. JPG and JPEG are one format with two spellings. */
-export type OutputFormat = 'jpg' | 'png'
+/**
+ * How the picture is stored. JPG and JPEG are one format with two spellings. SVG is a
+ * drawing made of curves, not pixels, and is only made for a signature.
+ */
+export type OutputFormat = 'jpg' | 'png' | 'svg'
 
 /** The ending of the file's name: what the portal sees before it looks inside. */
-export type Extension = 'jpg' | 'jpeg' | 'png'
+export type Extension = 'jpg' | 'jpeg' | 'png' | 'svg'
 
 /** What the form asks for, already resolved to pixels and bytes. */
 export interface Spec {
