@@ -8,11 +8,11 @@ const MAX_QUALITY = 95
 const SAFETY = 0.95
 
 /** Step 7d: highest quality whose output fits under maxKb; null if none does. */
-export async function fitKb(encode: Encode, maxKb: number): Promise<FitResult | null> {
+export async function fitKb(encode: Encode, maxKb: number, maxQuality = MAX_QUALITY,): Promise<FitResult | null> {
   const target = maxKb * 1000 * SAFETY
-
+  
   let lo = MIN_QUALITY
-  let hi = MAX_QUALITY
+  let hi = maxQuality
   let best: FitResult | null = null
 
   while (lo <= hi) {

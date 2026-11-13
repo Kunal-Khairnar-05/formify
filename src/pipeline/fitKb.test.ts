@@ -44,6 +44,21 @@ describe('fitKb', () => {
     }
   })
 
+  it('goes above the usual top quality only when told to', async () => {
+    const { encode } = fakeEncoder(100)
+    expect((await fitKb(encode, 500, 100))?.quality).toBe(100)
+    expect((await fitKb(encode, 500, 97))?.quality).toBe(97)
+    expect((await fitKb(encode, 500))?.quality).toBe(95)
+  })
+
+  it('still needs at most 6 encodes with the wider range', async () => {
+    for (const limit of [10, 43, 60, 77, 99, 500]) {
+      const { encode, calls } = fakeEncoder(1000)
+      await fitKb(encode, limit, 100)
+      expect(calls.length).toBeLessThanOrEqual(6)
+    }
+  })
+
   it('never returns bytes above the target', async () => {
     for (const limit of [45, 52, 60, 71, 88, 99]) {
       const { encode } = fakeEncoder(1000)
