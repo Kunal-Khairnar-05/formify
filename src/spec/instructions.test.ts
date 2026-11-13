@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findDpi, findKb, findSize, parseInstructions } from './instructions'
+import { findFormat, findDpi, findKb, findSize, parseInstructions } from './instructions'
 
 describe('findSize', () => {
   it('reads a size with the unit after each number', () => {
@@ -131,8 +131,8 @@ describe('parseInstructions', () => {
   it('reads a physical size with a DPI and one limit', () => {
     const text = 'Photo of 3.5 cm x 4.5 cm, scanned at 200 dpi, in JPG format, not more than 100 KB.'
     expect(parseInstructions(text)).toEqual({
-      fields: { width: '3.5', height: '4.5', unit: 'cm', minKb: '', maxKb: '100', dpi: '200' },
-      found: ['Size 3.5 x 4.5 cm', 'Maximum 100 KB', '200 DPI'],
+      fields: { width: '3.5', height: '4.5', unit: 'cm', minKb: '', maxKb: '100', dpi: '200', format: 'jpg' },
+      found: ['Size 3.5 x 4.5 cm', 'Maximum 100 KB', '200 DPI', 'JPG file'],
     })
   })
 
@@ -161,5 +161,35 @@ describe('parseInstructions', () => {
       fields: {},
       found: [],
     })
+  })
+})
+
+describe('findFormat', () => {
+  it('finds the one file type the text names', () => {
+    expect(findFormat('Upload in JPG format only')).toBe('jpg')
+    expect(findFormat('The photo must be a .jpeg file')).toBe('jpeg')
+    expect(findFormat('Signature in PNG format, max 20 KB')).toBe('png')
+  })
+
+  it('does not mind the case', () => {
+    expect(findFormat('format: Png')).toBe('png')
+    expect(findFormat('jpg')).toBe('jpg')
+  })
+
+  it('takes JPG when both spellings appear', () => {
+    expect(findFormat('Image should be in JPG/JPEG format')).toBe('jpg')
+  })
+
+  it('leaves the choice to the user when the text allows JPG or PNG', () => {
+    expect(findFormat('Photo in JPG or PNG format')).toBeNull()
+    expect(findFormat('Accepted: .jpeg, .png')).toBeNull()
+  })
+
+  it('finds nothing when no file type is named', () => {
+    expect(findFormat('Dimensions 200 x 230 pixels, 20 KB to 50 KB')).toBeNull()
+  })
+
+  it('does not find a type inside another word', () => {
+    expect(findFormat('Use the pngcrush tool')).toBeNull()
   })
 })

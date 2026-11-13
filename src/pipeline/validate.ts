@@ -1,3 +1,4 @@
+import { isPng } from './png'
 import type { Measurement, Spec } from './types'
 
 const UNKNOWN: Omit<Measurement, 'bytes'> = { widthPx: 0, heightPx: 0, format: 'unknown' }
@@ -10,6 +11,14 @@ function isFrameMarker(marker: number): boolean {
 
 /** Step 7c: read width, height and size back from the encoded bytes. */
 export function measure(bytes: Uint8Array): Measurement {
+  // a PNG starts with its signature, then the IHDR chunk: 4 bytes of length, "IHDR",
+  // then the width and the height as 4 bytes each, most significant byte first
+  if (isPng(bytes) && bytes.length >= 24) {
+    const uint32 = (at: number) =>
+      ((bytes[at] << 24) | (bytes[at + 1] << 16) | (bytes[at + 2] << 8) | bytes[at + 3]) >>> 0
+    return { widthPx: uint32(16), heightPx: uint32(20), bytes: bytes.length, format: 'png' }
+  }
+
   // every JPEG starts with the SOI marker FF D8
   if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
     return { ...UNKNOWN, bytes: bytes.length }

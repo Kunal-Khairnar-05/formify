@@ -39,6 +39,15 @@ export function typicalPhotoJpeg(pixels: number): number {
   return 2.2 * pixels ** 0.68
 }
 
+/**
+ * About what a photo on a plain background comes to as a PNG. From one test photo at four
+ * sizes: 1.5 bytes a pixel at 100 x 120 px down to 1.1 at 826 x 1062 px. A guide, not a
+ * limit: it only decides whether to caution.
+ */
+export function typicalPhotoPng(pixels: number): number {
+  return 1.1 * pixels
+}
+
 const kb = (bytes: number) => {
   const value = bytes / 1000
   return value < 10 ? value.toFixed(1) : Math.round(value).toString()
@@ -70,7 +79,15 @@ export function checkSpec(
     )
   }
 
-  if (maxKb !== undefined) {
+  if (maxKb !== undefined && spec.format === 'png') {
+    // a PNG cannot be squeezed, so a photo either fits as it is or does not
+    if (kind === 'photo' && maxKb * 1000 < typicalPhotoPng(pixels)) {
+      cautions.push(
+        `A PNG photo of ${size} is usually about ${kb(typicalPhotoPng(pixels))} KB, well over ` +
+          `${maxKb} KB, and a PNG cannot be made smaller. If the portal allows JPG, choose that.`,
+      )
+    }
+  } else if (maxKb !== undefined) {
     const budget = maxKb * 1000 * USABLE
     if (budget < smallestJpeg(pixels)) {
       errors.push(

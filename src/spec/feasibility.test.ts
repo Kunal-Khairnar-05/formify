@@ -130,6 +130,30 @@ describe('resolveChecked', () => {
   })
 })
 
+describe('resolveChecked, for a PNG', () => {
+  it('cautions that a PNG photo is far over a small limit and cannot be squeezed', () => {
+    // 413 x 531 px as a PNG is about 240 KB
+    const result = check({ format: 'png', maxKb: 50 })
+    expect(result.ok).toBe(true)
+    expect(cautions(result)[0]).toContain('PNG cannot be made smaller')
+  })
+
+  it('says nothing when the limit leaves room for a PNG photo', () => {
+    expect(cautions(check({ format: 'png', maxKb: 500 }))).toEqual([])
+  })
+
+  it('says nothing about a PNG signature, which is small', () => {
+    const result = check({ width: 140, height: 60, unit: 'px', format: 'png', maxKb: 20 }, 'signature')
+    expect(result).toMatchObject({ ok: true, cautions: [] })
+  })
+
+  it('does not apply the JPG size checks to a PNG', () => {
+    // as a JPG this would be refused: a blank 4000 x 4000 px JPG is about 88 KB
+    const result = check({ width: 4000, height: 4000, unit: 'px', format: 'png', maxKb: 20 }, 'signature')
+    expect(result.ok).toBe(true)
+  })
+})
+
 describe('checkSpec', () => {
   it('gives every problem at once', () => {
     const spec = { widthPx: 4000, heightPx: 4000, minKb: 30, maxKb: 20, format: 'jpg' as const, background: '#fff' }

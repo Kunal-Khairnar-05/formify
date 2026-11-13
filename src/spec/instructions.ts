@@ -97,6 +97,21 @@ export function findDpi(text: string): string | null {
 }
 
 /** Read whatever a portal's pasted instructions say about size, file size and DPI. */
+/**
+ * The file type the text asks for, when it names exactly one. "JPG or PNG" is left alone:
+ * the choice is then the user's.
+ */
+export function findFormat(text: string): 'jpg' | 'jpeg' | 'png' | null {
+  const has = (word: string) => new RegExp(String.raw`(?<![a-z])\.?${word}(?![a-z])`, 'i').test(text)
+  const jpg = has('jpg')
+  const jpeg = has('jpeg')
+  const png = has('png')
+  if (png) return jpg || jpeg ? null : 'png'
+  // both spellings together means either will do; the shorter one is the more common ending
+  if (jpg) return 'jpg'
+  return jpeg ? 'jpeg' : null
+}
+
 export function parseInstructions(text: string): Parsed {
   const fields: Partial<SpecFields> = {}
   const found: string[] = []
@@ -123,6 +138,12 @@ export function parseInstructions(text: string): Parsed {
   if (dpi !== null) {
     fields.dpi = dpi
     found.push(`${dpi} DPI`)
+  }
+
+  const format = findFormat(text)
+  if (format) {
+    fields.format = format
+    found.push(`${format.toUpperCase()} file`)
   }
 
   return { fields, found }

@@ -1,7 +1,7 @@
 import { composite } from './composite'
 import { cropBox } from './crop'
 import { softenEdge } from './edge'
-import { exportJpeg, type Exported } from './exportJpeg'
+import { exportImage, type Exported } from './export'
 import { faceGeometry } from './faceGeometry'
 import { dilate, limitTo, softOutside } from './gate'
 import type { Region } from '../crop/region'
@@ -147,7 +147,7 @@ export async function processPhoto(
   lap('checks')
 
   await onStage?.('Fitting the file size')
-  const exported = await exportJpeg(final, spec)
+  const exported = await exportImage(final, spec)
   lap('encode')
 
   return {

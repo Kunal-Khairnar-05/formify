@@ -1,4 +1,8 @@
-export type OutputFormat = 'jpg'
+/** How the picture is stored. JPG and JPEG are one format with two spellings. */
+export type OutputFormat = 'jpg' | 'png'
+
+/** The ending of the file's name: what the portal sees before it looks inside. */
+export type Extension = 'jpg' | 'jpeg' | 'png'
 
 /** What the form asks for, already resolved to pixels and bytes. */
 export interface Spec {
@@ -7,6 +11,8 @@ export interface Spec {
   minKb?: number
   maxKb?: number
   format: OutputFormat
+  /** The file name's ending; the format's usual one when left out. */
+  extension?: Extension
   /** CSS colour for the new background, e.g. '#ffffff'. */
   background: string
 }

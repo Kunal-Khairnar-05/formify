@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AlertIcon, ChevronIcon } from './icons'
+import type { Extension } from './pipeline/types'
 import type { SpecFields } from './spec/fields'
 import { parseInstructions } from './spec/instructions'
 import type { Checked } from './spec/feasibility'
@@ -25,6 +26,12 @@ const PRESETS: Record<'photo' | 'signature', { label: string; fields: Partial<Sp
     { label: '6 x 2 cm', fields: { width: '6', height: '2', unit: 'cm' } },
   ],
 }
+
+const FILE_TYPES: { value: Extension; label: string; hint: string }[] = [
+  { value: 'jpg', label: 'JPG', hint: 'The usual choice. File ends in .jpg' },
+  { value: 'jpeg', label: 'JPEG', hint: 'The same format as JPG. File ends in .jpeg' },
+  { value: 'png', label: 'PNG', hint: 'Keeps every pixel exactly, so files are larger. File ends in .png' },
+]
 
 const BACKGROUNDS = [
   { label: 'White', value: '#ffffff' },
@@ -204,6 +211,25 @@ export function SpecForm({ kind, fields, resolved, onChange }: Props) {
       </div>
 
       <div className="flex flex-col gap-3">
+        <p className={group}>FILE TYPE</p>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="File type">
+          {FILE_TYPES.map((type) => (
+            <button
+              key={type.value}
+              id={`spec-format-${type.value}`}
+              className={`nm-btn !min-h-9 !rounded-full !px-4 !text-xs ${fields.format === type.value ? 'nm-btn-primary' : ''}`}
+              aria-pressed={fields.format === type.value}
+              title={type.hint}
+              onClick={() => set({ format: type.value })}
+            >
+              {type.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-soft text-xs">{FILE_TYPES.find((type) => type.value === fields.format)!.hint}.</p>
+      </div>
+
+      <div className="flex flex-col gap-3">
         <p className={group}>BACKGROUND</p>
         <div className="flex items-center gap-3">
           {BACKGROUNDS.map((colour) => (
@@ -235,7 +261,7 @@ export function SpecForm({ kind, fields, resolved, onChange }: Props) {
         <>
           <p id="spec-summary" className="card px-3 py-2.5 text-sm font-semibold">
             <span className="text-soft font-medium">Your file will be </span>
-            {resolved.spec.widthPx} x {resolved.spec.heightPx} px, JPG
+            {resolved.spec.widthPx} x {resolved.spec.heightPx} px, {fields.format.toUpperCase()}
           </p>
           {resolved.cautions.length > 0 && (
             <ul id="spec-cautions" className="flex flex-col gap-2">

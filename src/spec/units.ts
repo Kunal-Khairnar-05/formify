@@ -1,4 +1,4 @@
-import type { Spec } from '../pipeline/types'
+import type { Extension, Spec } from '../pipeline/types'
 
 export type Unit = 'px' | 'cm' | 'mm' | 'in'
 
@@ -11,6 +11,8 @@ export interface SpecInput {
   dpi: number
   minKb?: number
   maxKb?: number
+  /** The file type the form asks for; JPG when left out. */
+  format?: Extension
   /** CSS colour for the new background, e.g. '#ffffff'. */
   background: string
 }
@@ -65,6 +67,14 @@ export function resolveSpec(input: SpecInput): Resolved {
 
   return {
     ok: true,
-    spec: { widthPx, heightPx, minKb, maxKb, format: 'jpg', background: input.background },
+    spec: {
+      widthPx,
+      heightPx,
+      minKb,
+      maxKb,
+      format: input.format === 'png' ? 'png' : 'jpg',
+      extension: input.format,
+      background: input.background,
+    },
   }
 }

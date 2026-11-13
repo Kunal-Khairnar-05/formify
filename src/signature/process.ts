@@ -1,5 +1,5 @@
 import type { Region } from '../crop/region'
-import { exportJpeg, type Exported } from '../pipeline/exportJpeg'
+import { exportImage, type Exported } from '../pipeline/export'
 import { loadImage } from '../pipeline/loadImage'
 import { rotateQuarter } from '../pipeline/orient'
 import { cropSource } from '../pipeline/precrop'
@@ -148,7 +148,7 @@ export async function processSignature(
   }
 
   await onStage?.('Fitting the file size')
-  const exported = await exportJpeg(final, spec)
+  const exported = await exportImage(final, spec)
   lap('encode')
 
   return {
