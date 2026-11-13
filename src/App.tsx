@@ -965,7 +965,7 @@ function App() {
                 <span>
                   Finer hair edges
                   <span className="text-soft block text-xs font-medium">
-                    Downloads a 26 MB model once; a little slower.
+                    A little slower.
                   </span>
                 </span>
                 <input
