@@ -56,6 +56,8 @@ export async function processPhoto(
   quality: Quality = 'fast',
   /** Part of the photo to use, chosen by the user; the whole photo when left out. */
   region?: Region,
+  /** Told what is about to start, in words for the user; awaited so the page can show it. */
+  onStage?: (stage: string) => void | Promise<void>,
 ): Promise<Processed> {
   const timingsMs: Record<string, number> = {}
   let mark = performance.now()
@@ -65,9 +67,11 @@ export async function processPhoto(
     mark = now
   }
 
+  await onStage?.('Reading your photo')
   const loaded = await loadImage(region ? await cropSource(file, region) : file)
   lap('load')
 
+  await onStage?.('Finding your face')
   const { image, faces, turns } = await detectUpright(loaded)
   lap('faces')
   // several faces are fine when one is clearly the subject: a neighbour at the edge of a
@@ -77,6 +81,7 @@ export async function processPhoto(
   if (main === null) return { image, turns, faceCount: faces.length, timingsMs }
 
   const meshFace = geometries[main]
+  await onStage?.('Removing the background')
   const rawMask = await segment(image)
   lap('segment')
 
@@ -95,6 +100,7 @@ export async function processPhoto(
   } else {
     // where the edge is: MODNet's soft matte, which keeps hair detail but also every
     // other person in the frame, so it is limited to a slightly grown copy of "who"
+    await onStage?.('Refining the hair edges')
     const alpha = await matte(image)
     lap('matte')
     const gate = dilate(who, image.width, image.height, Math.round(image.width * GATE_GROWTH))
@@ -140,6 +146,7 @@ export async function processPhoto(
   warnings.push(...sourceWarnings(measureFace(image, face)))
   lap('checks')
 
+  await onStage?.('Fitting the file size')
   const exported = await exportJpeg(final, spec)
   lap('encode')
 

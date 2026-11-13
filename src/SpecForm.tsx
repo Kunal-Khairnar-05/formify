@@ -60,7 +60,7 @@ export function SpecForm({ kind, fields, resolved, onChange }: Props) {
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
-      <details className="nm-inset p-3">
+      <details className="card p-3">
         <summary className="flex items-center justify-between gap-2 rounded-md text-sm font-semibold">
           Paste the portal's instructions
           <span className="chevron">
@@ -231,7 +231,7 @@ export function SpecForm({ kind, fields, resolved, onChange }: Props) {
       </div>
 
       {resolved.ok ? (
-        <p id="spec-summary" className="nm-inset px-3 py-2.5 text-sm font-semibold">
+        <p id="spec-summary" className="card px-3 py-2.5 text-sm font-semibold">
           <span className="text-soft font-medium">Your file will be </span>
           {resolved.spec.widthPx} x {resolved.spec.heightPx} px, JPG
         </p>

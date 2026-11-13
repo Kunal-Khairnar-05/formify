@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CropBox } from './CropBox'
 import { fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
 import {
@@ -53,17 +53,74 @@ const startTheme = (): Theme => (document.documentElement.dataset.theme === 'dar
 // from this width up the sidebar sits beside the page; below it, it slides over the page
 const WIDE = '(min-width: 1024px)'
 
+/** One line of the result's checklist: something the form asks for, and what the file has. */
+interface Check {
+  label: string
+  /** What the file measures. */
+  value: string
+  /** What the form asks for. */
+  wanted: string
+  ok: boolean
+}
+
 /** What the finished file measures, for the result card. */
 interface Summary {
   /** True when the file meets everything the form asks for. */
   valid: boolean
-  kb: string
-  limit: string
-  size: string
-  quality: number
-  /** Why the file is not valid, or extra notes about how it was made. */
+  checks: Check[]
+  /** Used in the name of the downloaded file. */
+  widthPx: number
+  heightPx: number
+  /** Extra notes about how the file was made. */
   notes: string[]
 }
+
+const STORE = 'formify-fields'
+
+const isFields = (value: unknown): value is SpecFields =>
+  typeof value === 'object' &&
+  value !== null &&
+  Object.keys(DEFAULT_FIELDS).every((key) => typeof (value as Record<string, unknown>)[key] === 'string')
+
+/** The form details from the last visit, so a returning user does not type them again. */
+function savedFields(): Record<Kind, SpecFields> {
+  const fresh = { photo: DEFAULT_FIELDS, signature: SIGNATURE_FIELDS }
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(STORE) ?? 'null')
+    if (typeof saved !== 'object' || saved === null) return fresh
+    const { photo, signature } = saved as Record<string, unknown>
+    return {
+      photo: isFields(photo) ? photo : fresh.photo,
+      signature: isFields(signature) ? signature : fresh.signature,
+    }
+  } catch {
+    // storage refused, or what was saved is not readable: start from the usual details
+    return fresh
+  }
+}
+
+const QUESTIONS = [
+  {
+    ask: 'Is my photo uploaded anywhere?',
+    answer:
+      'No. Everything runs in your browser on this device. The page downloads the models it needs, and your photo and the result never leave your device.',
+  },
+  {
+    ask: 'Will the portal accept the result?',
+    answer:
+      'Formify matches the dimensions, file size and format you enter, and warns about common reasons for rejection such as blur, a leaning head or uneven light. Each portal has its own rules, so check the result against its instructions.',
+  },
+  {
+    ask: 'Why is the first photo slower?',
+    answer:
+      'The first photo downloads about 13 MB of models. Your browser keeps them, so later photos start at once. Signatures need no models.',
+  },
+  {
+    ask: 'What kind of photo works best?',
+    answer:
+      'A recent front-facing photo in even light, with your whole head and the top of your shoulders in view and nobody else close to you. For a signature, dark ink on light paper.',
+  },
+]
 
 /** The size limits as text, e.g. "20 to 50 KB". */
 function limitText(spec: Spec): string {
@@ -90,13 +147,21 @@ function Step({ number, title, hint }: { number: number; title: string; hint?: s
   )
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+/** The result's checklist: what the form asks for beside what the file has. */
+function Checklist({ checks }: { checks: Check[] }) {
   return (
-    <div className="nm-inset px-3 py-2.5">
-      <p className="text-soft text-xs font-semibold">{label}</p>
-      <p className="text-base font-bold whitespace-nowrap tabular-nums">{value}</p>
-      {hint && <p className="text-soft text-xs">{hint}</p>}
-    </div>
+    <ul className="card divide-y divide-[var(--line)]">
+      {checks.map(({ label, value, wanted, ok }) => (
+        <li key={label} className="flex items-center gap-3 px-3 py-2.5">
+          <span className={ok ? 'nm-good' : 'nm-danger'}>{ok ? <CheckIcon /> : <AlertIcon />}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">{label}</p>
+            <p className="text-soft text-xs">{wanted}</p>
+          </div>
+          <p className="text-sm font-bold whitespace-nowrap tabular-nums">{value}</p>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -109,6 +174,10 @@ function App() {
   // open beside the page on a wide screen; closed, as a drawer, on a phone
   const [sidebar, setSidebar] = useState(() => window.matchMedia(WIDE).matches)
   const [busy, setBusy] = useState(false)
+  // what the pipeline is doing right now, in words; shown while working
+  const [stage, setStage] = useState('')
+  // true while a file is held over the drop area
+  const [dragging, setDragging] = useState(false)
   // what to do next, or what went wrong
   const [info, setInfo] = useState('')
   // how the last result was reached: sizes and timings, shown under "How this was made"
@@ -120,10 +189,14 @@ function App() {
   const [download, setDownload] = useState<string | null>(null)
   const [quality, setQuality] = useState<Quality>('fast')
   // each kind keeps its own details, so switching back and forth loses nothing
-  const [allFields, setAllFields] = useState<Record<Kind, SpecFields>>({
-    photo: DEFAULT_FIELDS,
-    signature: SIGNATURE_FIELDS,
-  })
+  const [allFields, setAllFields] = useState<Record<Kind, SpecFields>>(savedFields)
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORE, JSON.stringify(allFields))
+    } catch {
+      // storage refused: the details then last until the page is closed
+    }
+  }, [allFields])
   const fields = allFields[kind]
   const setFields = (next: SpecFields) => setAllFields({ ...allFields, [kind]: next })
   const [preview, setPreview] = useState<string | null>(null)
@@ -194,6 +267,33 @@ function App() {
     setInfo('')
   }
 
+  /** Put the picture and its result away, keeping the form details. */
+  function startOver() {
+    lastFile.current = undefined
+    setPreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous)
+      return null
+    })
+    setPhotoSize(null)
+    setCustom(null)
+    setSignatureTurns(null)
+    clearResult()
+    setInfo('')
+  }
+
+  // show the stage, then give the page a moment to paint it before the heavy work starts
+  const onStage = (next: string) => {
+    setStage(next)
+    // a tab in the background is not painted at all, and waiting for a frame there would
+    // hold the work up until the user comes back
+    if (document.hidden) return
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => setTimeout(resolve, 0))
+      // in case the tab is hidden while waiting
+      setTimeout(resolve, 100)
+    })
+  }
+
   function onKind(next: Kind) {
     setKind(next)
     setSignatureTurns(null)
@@ -244,16 +344,38 @@ function App() {
       return
     }
     const { bytes, quality, paddedBytes, measured, problems } = exported
-    const notes = [...problems]
+    // the same readings of 1 KB as the validator: 1000 bytes for a maximum, 1024 for a minimum
+    const sizeOk =
+      (spec.maxKb === undefined || measured.bytes <= spec.maxKb * 1000) &&
+      (spec.minKb === undefined || measured.bytes >= spec.minKb * 1024)
+    const notes = [`Saved at JPG quality ${quality}.`]
     if (paddedBytes > 0) {
       notes.push(`Padded by ${(paddedBytes / 1000).toFixed(1)} KB to reach the minimum size.`)
     }
     setSummary({
       valid: problems.length === 0,
-      kb: `${(measured.bytes / 1000).toFixed(1)} KB`,
-      limit: limitText(spec),
-      size: `${measured.widthPx} x ${measured.heightPx} px`,
-      quality,
+      checks: [
+        {
+          label: 'Dimensions',
+          value: `${measured.widthPx} x ${measured.heightPx} px`,
+          wanted: `Form asks for ${spec.widthPx} x ${spec.heightPx} px`,
+          ok: measured.widthPx === spec.widthPx && measured.heightPx === spec.heightPx,
+        },
+        {
+          label: 'File size',
+          value: `${(measured.bytes / 1000).toFixed(1)} KB`,
+          wanted: `Form asks for ${limitText(spec)}`,
+          ok: sizeOk,
+        },
+        {
+          label: 'Format',
+          value: measured.format === 'jpg' ? 'JPG' : 'Unknown',
+          wanted: 'Form asks for JPG',
+          ok: measured.format === spec.format,
+        },
+      ],
+      widthPx: measured.widthPx,
+      heightPx: measured.heightPx,
       notes,
     })
     if (problems.length === 0) {
@@ -281,7 +403,7 @@ function App() {
 
     try {
       if (kind === 'signature') {
-        const result = await processSignature(file, spec, chosen, forcedTurns)
+        const result = await processSignature(file, spec, chosen, forcedTurns, onStage)
         const { image, stages, timingsMs } = result
         setSignatureTurns(result.turns)
         const ctx = drawSource(image)
@@ -305,6 +427,7 @@ function App() {
         spec,
         quality,
         chosen,
+        onStage,
       )
       const ctx = drawSource(image)
       const turned = turns === 0 ? '' : `, turned ${turns * 90} degrees`
@@ -340,6 +463,7 @@ function App() {
       setInfo(`Something went wrong: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setBusy(false)
+      setStage('')
     }
   }
 
@@ -359,12 +483,12 @@ function App() {
       <aside
         id="sidebar"
         aria-label="Sidebar"
-        className={`nm-raised fixed inset-y-0 left-0 z-40 flex flex-col gap-6 rounded-none p-4 transition-[width,transform] duration-200 lg:sticky lg:top-4 lg:m-4 lg:mr-0 lg:h-[calc(100vh-2rem)] lg:translate-x-0 lg:rounded-3xl ${
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col gap-6 border-r border-[var(--line)] bg-[var(--bg)] p-4 transition-[width,transform] duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
           sidebar ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-[4.75rem]'
         }`}
       >
         <div className="flex items-center gap-3">
-          <span className="nm-raised flex h-11 w-11 flex-none items-center justify-center !rounded-2xl">
+          <span className="card flex h-11 w-11 flex-none items-center justify-center">
             <img src="/favicon.svg" alt="" className="h-6 w-6" />
           </span>
           {sidebar && (
@@ -406,7 +530,7 @@ function App() {
 
         <div className="mt-auto flex flex-col gap-3">
           {sidebar && (
-            <div className="nm-inset flex gap-3 p-3">
+            <div className="card flex gap-3 p-3">
               <LockIcon />
               <p className="text-xs leading-relaxed font-medium">
                 <span className="font-bold">Private by design.</span> Your photo is processed in this
@@ -444,11 +568,15 @@ function App() {
             </h1>
             <p className="text-soft hidden text-sm sm:block">{current.lead}</p>
           </div>
+          <p className="card ml-auto hidden flex-none items-center gap-2 !rounded-full px-3 py-1.5 text-xs font-bold md:flex">
+            <LockIcon size={16} />
+            On-device
+          </p>
         </header>
 
         {/* on a phone: picture, form, result, in that order; on a wide screen the form sits on the right */}
-        <main className="grid flex-1 content-start gap-6 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,1fr)_23rem] xl:grid-rows-[auto_1fr]">
-          <section aria-label="Your picture" className="nm-raised flex min-w-0 flex-col gap-4 p-5">
+        <main className="grid flex-1 content-start gap-6 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,1fr)_23rem] xl:grid-rows-[auto_auto_auto]">
+          <section aria-label="Your picture" className="card flex min-w-0 flex-col gap-4 p-5">
             <Step
               number={1}
               title={kind === 'photo' ? 'Add your photo' : 'Add a photo of your signature'}
@@ -461,10 +589,15 @@ function App() {
               }
             />
             <div
-              className="nm-inset nm-drop p-3"
-              onDragOver={(e) => e.preventDefault()}
+              className={`nm-inset nm-drop p-3 ${dragging ? 'outline-2 outline-offset-2 outline-[var(--primary-dark)]' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragging(true)
+              }}
+              onDragLeave={() => setDragging(false)}
               onDrop={(e) => {
                 e.preventDefault()
+                setDragging(false)
                 onPick(e.dataTransfer.files[0])
               }}
             >
@@ -481,10 +614,12 @@ function App() {
                   htmlFor="photo"
                   className="flex min-h-64 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--shadow-dark)] p-6 text-center"
                 >
-                  <span className="nm-raised flex h-14 w-14 items-center justify-center !rounded-2xl">
+                  <span className="card flex h-14 w-14 items-center justify-center">
                     <UploadIcon size={26} />
                   </span>
-                  <span className="text-base font-bold">Choose a file or drop it here</span>
+                  <span className="text-base font-bold">
+                    {dragging ? 'Drop it to add it' : 'Choose a file or drop it here'}
+                  </span>
                   <span className="text-soft text-sm">JPG or PNG, from your phone or computer</span>
                 </label>
               )}
@@ -527,7 +662,7 @@ function App() {
 
           <aside
             aria-label="Form requirements"
-            className="nm-raised flex flex-col gap-5 p-5 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start"
+            className="card flex flex-col gap-5 p-5 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start"
           >
             <Step number={2} title="What the form asks for" hint="Copy these from the portal." />
             <SpecForm kind={kind} fields={fields} resolved={resolved} onChange={setFields} />
@@ -555,7 +690,7 @@ function App() {
               onClick={() => onCreate()}
             >
               {busy ? <span className="nm-spinner" /> : <SparkIcon />}
-              {busy ? 'Working...' : `Create ${kind}`}
+              {busy ? 'Working' : `Create ${kind}`}
             </button>
             {!preview && <p className="text-soft -mt-2 text-center text-xs">Add a photo first.</p>}
             {info && (
@@ -565,12 +700,23 @@ function App() {
             )}
           </aside>
 
-          <section aria-label="Result" className="nm-raised flex min-w-0 flex-col gap-4 p-5 xl:self-start">
+          <section aria-label="Result" className="card flex min-w-0 flex-col gap-4 p-5 xl:self-start">
             <Step
               number={3}
               title="Download"
-              hint={hasResult ? undefined : 'Your finished file appears here, checked against the form.'}
+              hint={
+                hasResult || busy ? undefined : 'Your finished file appears here, checked against the form.'
+              }
             />
+            {busy && (
+              <div id="progress" role="status" className="flex flex-col gap-3">
+                <p className="flex items-center gap-2.5 text-sm font-semibold">
+                  <span className="nm-spinner" />
+                  {stage || 'Starting'}
+                </p>
+                <div className="nm-progress" />
+              </div>
+            )}
             {failure && (
               <p className="nm-note">
                 <AlertIcon />
@@ -589,22 +735,13 @@ function App() {
                     {summary.valid ? <CheckIcon /> : <AlertIcon />}
                     {summary.valid ? 'Ready to upload' : 'Does not meet the form yet'}
                   </p>
-                  <div className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-3">
-                    <Stat label="File size" value={summary.kb} hint={`Limit: ${summary.limit}`} />
-                    <Stat label="Dimensions" value={summary.size} />
-                    <Stat label="Format" value="JPG" hint={`Quality ${summary.quality}`} />
-                  </div>
-                  {summary.notes.map((note) => (
-                    <p key={note} className="text-soft text-sm">
-                      {note}
-                    </p>
-                  ))}
+                  <Checklist checks={summary.checks} />
                   <div className="flex flex-wrap gap-3">
                     {download && (
                       <a
                         className="nm-btn nm-btn-primary"
                         href={download}
-                        download={`formify-${kind}.jpg`}
+                        download={`formify-${kind}-${summary.widthPx}x${summary.heightPx}.jpg`}
                       >
                         <DownloadIcon />
                         Download
@@ -621,6 +758,9 @@ function App() {
                         Rotate
                       </button>
                     )}
+                    <button id="start-over" className="nm-btn" disabled={busy} onClick={startOver}>
+                      Start over
+                    </button>
                   </div>
                 </div>
               )}
@@ -644,12 +784,34 @@ function App() {
                   <ChevronIcon size={16} />
                 </span>
               </summary>
+              {summary?.notes.map((note) => (
+                <p key={note} className="text-soft mt-3">
+                  {note}
+                </p>
+              ))}
               <p className="text-soft mt-3">{detail}</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <canvas ref={sourceRef} className="h-auto w-full rounded-lg" />
                 <canvas ref={maskRef} className="h-auto w-full rounded-lg" />
               </div>
             </details>
+          </section>
+
+          <section aria-label="Common questions" className="flex min-w-0 flex-col gap-3 xl:col-span-2">
+            <h2 className="text-base font-bold">Common questions</h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              {QUESTIONS.map(({ ask, answer }) => (
+                <details key={ask} className="card self-start px-4 py-3">
+                  <summary className="flex items-center justify-between gap-3 rounded-md text-sm font-semibold">
+                    {ask}
+                    <span className="chevron">
+                      <ChevronIcon size={18} />
+                    </span>
+                  </summary>
+                  <p className="text-soft mt-2 text-sm leading-relaxed">{answer}</p>
+                </details>
+              ))}
+            </div>
           </section>
         </main>
 

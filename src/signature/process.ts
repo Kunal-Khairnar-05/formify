@@ -70,6 +70,8 @@ export async function processSignature(
   region?: Region,
   /** Clockwise quarter turns to apply; guessed from the ink when left out. */
   turns?: number,
+  /** Told what is about to start, in words for the user; awaited so the page can show it. */
+  onStage?: (stage: string) => void | Promise<void>,
 ): Promise<ProcessedSignature> {
   const timingsMs: Record<string, number> = {}
   let mark = performance.now()
@@ -79,9 +81,11 @@ export async function processSignature(
     mark = now
   }
 
+  await onStage?.('Reading your photo')
   let image = await loadImage(region ? await cropSource(file, region) : file, WORKING_EDGE)
   lap('load')
 
+  await onStage?.('Finding the ink')
   let found = findInk(image)
   lap('ink')
 
@@ -95,6 +99,7 @@ export async function processSignature(
     confident = guess.confident
   }
   if (applied !== 0) {
+    await onStage?.('Turning it upright')
     image = rotateQuarter(image, applied)
     // the lines and the stroke shapes are found afresh in the turned picture
     found = findInk(image)
@@ -142,6 +147,7 @@ export async function processSignature(
     )
   }
 
+  await onStage?.('Fitting the file size')
   const exported = await exportJpeg(final, spec)
   lap('encode')
 
