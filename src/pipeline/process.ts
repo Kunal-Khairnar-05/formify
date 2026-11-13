@@ -1,5 +1,6 @@
 import { composite } from './composite'
 import { cropBox } from './crop'
+import { softenEdge } from './edge'
 import { exportJpeg, type Exported } from './exportJpeg'
 import { faceGeometry } from './faceGeometry'
 import { dilate, limitTo, softOutside } from './gate'
@@ -14,6 +15,15 @@ import type { FaceGeometry, Rect, Spec } from './types'
 // how far the "who" mask is grown before it limits the matte, as a fraction of image width;
 // wide enough to keep loose hair, narrow enough to exclude a neighbour
 const GATE_GROWTH = 0.015
+
+// how far the fast path pulls the edge in and feathers it, as a fraction of image width
+const EDGE_SOFTEN = 0.003
+
+/**
+ * fast: U²-Net only, with a softened edge. The default.
+ * fine: adds MODNet for loose hair. Costs a 26 MB model download and about a second more.
+ */
+export type Quality = 'fast' | 'fine'
 
 export interface Processed {
   /** The photo after loading and turning upright. */
@@ -36,7 +46,11 @@ export interface Processed {
 }
 
 /** The whole pipeline: file in, spec-sized JPEG out, with every intermediate stage kept. */
-export async function processPhoto(file: Blob, spec: Spec): Promise<Processed> {
+export async function processPhoto(
+  file: Blob,
+  spec: Spec,
+  quality: Quality = 'fast',
+): Promise<Processed> {
   const timingsMs: Record<string, number> = {}
   let mark = performance.now()
   const lap = (name: string) => {
@@ -63,14 +77,21 @@ export async function processPhoto(file: Blob, spec: Spec): Promise<Processed> {
   }
   const who = keepConnected(sharpenMask(rawMask), image.width, image.height, faceCentre)
 
-  // where the edge is: MODNet's soft matte, which keeps hair detail but also every
-  // other person in the frame, so it is limited to a slightly grown copy of "who"
-  const alpha = await matte(image)
-  lap('matte')
-  const gate = dilate(who, image.width, image.height, Math.round(image.width * GATE_GROWTH))
-  // in the grown band only soft matte (loose hair) is wanted; anything solid out there
-  // is a neighbour or an object touching the person
-  const mask = softOutside(limitTo(alpha, gate), who, image.width, image.height)
+  let mask: Float32Array
+  if (quality === 'fast') {
+    // pull the edge in off the background and feather it; no second model
+    const radius = Math.max(1, Math.round(image.width * EDGE_SOFTEN))
+    mask = softenEdge(who, image.width, image.height, radius)
+  } else {
+    // where the edge is: MODNet's soft matte, which keeps hair detail but also every
+    // other person in the frame, so it is limited to a slightly grown copy of "who"
+    const alpha = await matte(image)
+    lap('matte')
+    const gate = dilate(who, image.width, image.height, Math.round(image.width * GATE_GROWTH))
+    // in the grown band only soft matte (loose hair) is wanted; anything solid out there
+    // is a neighbour or an object touching the person
+    mask = softOutside(limitTo(alpha, gate), who, image.width, image.height)
+  }
 
   // the mesh stops at the hairline; the mask knows where the hair really ends
   const face: FaceGeometry = {

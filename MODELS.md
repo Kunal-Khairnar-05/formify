@@ -22,4 +22,7 @@ Every model file shipped with Formify, where it came from, and its checksum.
   sides multiples of 32. Output is the matte, 1 x 1 x H x W, already in [0, 1].
 - The MODNet file is a third-party ONNX conversion. Before launch, confirm from the original repository that
   its Apache-2.0 statement covers the pretrained weights.
-- The two models are used together: U²-Net decides which person to keep, MODNet supplies the soft edge.
+- U²-Net alone is the default: it decides which person to keep, and its edge is pulled in and feathered.
+  MODNet is optional ("finer hair edges"): it is loaded only when asked for and supplies a soft edge
+  inside the area U²-Net kept.
+- An 8-bit quantized MODNet (6.6 MB) was tried and rejected: it was no faster and left visible patches.
