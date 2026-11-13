@@ -12,11 +12,15 @@ interface Props {
   /** URL of the photo to show. */
   src: string
   region: Region
+  /** Shape to hold the region to (see fractionAspect); free-form when left out. */
+  aspect?: number
   onChange: (region: Region) => void
+  /** Called with the photo's own pixel size once it has loaded. */
+  onSize: (width: number, height: number) => void
 }
 
 /** The photo with a crop rectangle that can be moved and resized by its corners. */
-export function CropBox({ src, region, onChange }: Props) {
+export function CropBox({ src, region, aspect, onChange, onSize }: Props) {
   const frame = useRef<HTMLDivElement>(null)
   const drag = useRef<{ handle: Handle; x: number; y: number; start: Region } | null>(null)
 
@@ -34,7 +38,7 @@ export function CropBox({ src, region, onChange }: Props) {
     if (!current || !bounds) return
     const dx = (event.clientX - current.x) / bounds.width
     const dy = (event.clientY - current.y) / bounds.height
-    onChange(dragRegion(current.start, current.handle, dx, dy))
+    onChange(dragRegion(current.start, current.handle, dx, dy, aspect))
   }
 
   const end = () => {
@@ -50,7 +54,14 @@ export function CropBox({ src, region, onChange }: Props) {
 
   return (
     <div ref={frame} className="relative mt-3 touch-none overflow-hidden select-none">
-      <img id="crop-photo" src={src} alt="Your photo" className="block h-auto w-full" draggable={false} />
+      <img
+        id="crop-photo"
+        src={src}
+        alt="Your photo"
+        className="block h-auto w-full"
+        draggable={false}
+        onLoad={(event) => onSize(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
+      />
       <div
         id="crop-region"
         className="absolute cursor-move border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"
