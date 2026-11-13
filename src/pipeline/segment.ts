@@ -1,4 +1,4 @@
-import { getSegmentationSession, ort } from './ort'
+import { getSegmentationSession, loadOrt } from './ort'
 
 const SIZE = 320
 // ImageNet statistics the model was trained with, per RGB channel
@@ -23,7 +23,7 @@ export async function segment(image: ImageBitmap): Promise<Float32Array> {
   }
 
   // 2. Inference
-  const session = await getSegmentationSession()
+  const [ort, session] = await Promise.all([loadOrt(), getSegmentationSession()])
   const feeds = { [session.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, SIZE, SIZE]) }
   const results = await session.run(feeds)
   const output = results[session.outputNames[0]].data as Float32Array

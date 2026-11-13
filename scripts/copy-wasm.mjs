@@ -5,12 +5,14 @@ const runtimes = [
   {
     from: 'node_modules/@mediapipe/tasks-vision/wasm',
     to: 'public/mediapipe',
-    files: ['vision_wasm_internal.js', 'vision_wasm_internal.wasm'],
+    // the "module" pair: the pipeline runs in a worker, which loads the runtime as a module
+    files: ['vision_wasm_module_internal.js', 'vision_wasm_module_internal.wasm'],
   },
   {
     from: 'node_modules/onnxruntime-web/dist',
     to: 'public/ort',
-    files: ['ort-wasm-simd-threaded.wasm'],
+    // the runtime as one file, which a build loads as it is (see src/pipeline/ort.ts)
+    files: ['ort-wasm-simd-threaded.wasm', 'ort.wasm.bundle.min.mjs'],
   },
 ]
 
