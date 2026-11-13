@@ -313,7 +313,7 @@ body {
       nm-ink 6s linear infinite;
   }
 
-  .nm-signed svg {
+  .nm-flourish {
     position: absolute;
     left: 0;
     bottom: 0;
@@ -322,7 +322,7 @@ body {
     overflow: visible;
   }
 
-  .nm-signed path {
+  .nm-flourish path {
     fill: none;
     stroke: var(--primary-strong);
     stroke-width: 2.5;
@@ -331,6 +331,49 @@ body {
     stroke-dasharray: 220;
     stroke-dashoffset: 220;
     animation: nm-underline 600ms ease-out 1200ms forwards;
+  }
+
+  /* the pen: it keeps pace with the edge of the writing, then lifts off the page */
+  .nm-pen {
+    position: absolute;
+    top: 0.125rem;
+    left: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+    animation: nm-pen 1900ms cubic-bezier(0.6, 0, 0.3, 1) both;
+  }
+
+  /*
+   * The rubber stamp: it comes down from above, larger and turned, lands with a bounce, and
+   * leaves its mark a little off square, as a hand-pressed stamp does.
+   */
+  .nm-stamp {
+    position: absolute;
+    top: -0.375rem;
+    right: -1.5rem;
+    padding: 0.125rem 0.4375rem;
+    border: 2px solid currentColor;
+    border-radius: 0.375rem;
+    /* a second, thinner line inside the first, like the rim of a stamp */
+    outline: 1px solid currentColor;
+    outline-offset: -4px;
+    color: var(--danger);
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    line-height: 1.5;
+    text-transform: uppercase;
+    opacity: 0.9;
+    pointer-events: none;
+    transform: rotate(-11deg);
+    animation: nm-thump 380ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
   }
 
   /* a panel that stands out of the page */
@@ -704,6 +747,31 @@ body {
   }
 }
 
+@keyframes nm-pen {
+  0% {
+    left: 0;
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+  68% {
+    left: calc(100% - 0.5rem);
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+  100% {
+    left: calc(100% + 0.25rem);
+    opacity: 0;
+    transform: translateY(-0.5rem) rotate(-20deg);
+  }
+}
+
+@keyframes nm-thump {
+  from {
+    opacity: 0;
+    transform: translateY(-1rem) rotate(-28deg) scale(2.4);
+  }
+}
+
 @keyframes nm-underline {
   to {
     stroke-dashoffset: 0;
@@ -789,9 +857,16 @@ body {
   .nm-signed-name {
     animation: none;
   }
-  .nm-signed path {
+  .nm-flourish path {
     animation: none;
     stroke-dashoffset: 0;
+  }
+  /* no pen and no thump: the stamp is simply there */
+  .nm-pen {
+    display: none;
+  }
+  .nm-stamp {
+    animation: none;
   }
   .nm-signed:hover {
     transform: none;

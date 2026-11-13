@@ -252,35 +252,57 @@ function Confetti() {
   )
 }
 
+const PROFILE = 'https://github.com/Kunal-Khairnar-05'
+// how long the stamp is given to land before a tap moves on to the profile
+const STAMP_MS = 700
+
 /**
- * The developer's credit, signed: the name is written out in handwriting as if by a pen,
- * in ink that shifts between the app's purple and yellow, and underlined with a flourish.
- * Pointing at it signs it again; clicking it throws confetti before the link opens.
+ * The developer's credit, signed: a pen writes the name out in handwriting, in ink that
+ * shifts between the app's purple and yellow, and underlines it with a flourish. Pointing
+ * at it brings a rubber stamp down on it.
+ *
+ * A click opens the profile at once, so nothing is played on a click: the new tab would
+ * hide it. A phone has no pointer to hover with, so there the first tap brings the stamp
+ * down and the profile opens a moment later.
  */
-function SignedCredit({ onCelebrate }: { onCelebrate: () => void }) {
-  // goes up each time the pointer arrives, which starts the writing afresh
-  const [signing, setSigning] = useState(0)
+function SignedCredit() {
+  const [stamped, setStamped] = useState(false)
+
+  function onTap(event: React.MouseEvent<HTMLAnchorElement>) {
+    // a device that can hover has already shown the stamp: let the link do its work
+    if (!window.matchMedia('(hover: none)').matches) return
+    event.preventDefault()
+    setStamped(true)
+    setTimeout(() => {
+      // still within the moment a browser allows a tap to open a tab; if it refuses, go there in this one
+      if (!window.open(PROFILE, '_blank', 'noopener')) window.location.href = PROFILE
+      setStamped(false)
+    }, STAMP_MS)
+  }
+
   return (
-    // the pointer is watched on the outer element, which stays put: the link inside is
-    // replaced to restart its writing, and a replaced element would see the pointer arrive again
     <p
       id="sidebar-credit"
       className="flex w-fit flex-col px-1"
-      onMouseEnter={() => setSigning((count) => count + 1)}
+      onMouseEnter={() => setStamped(true)}
+      onMouseLeave={() => setStamped(false)}
     >
       <span className="text-soft text-xs font-semibold">Developed by</span>
-      <a
-        key={signing}
-        className="nm-signed"
-        href="https://github.com/Kunal-Khairnar-05"
-        target="_blank"
-        rel="noreferrer"
-        onClick={onCelebrate}
-      >
+      <a className="nm-signed" href={PROFILE} target="_blank" rel="noreferrer" onClick={onTap}>
         <span className="nm-signed-name">Kunal Khairnar</span>
-        <svg viewBox="0 0 200 14" preserveAspectRatio="none" aria-hidden="true">
+        {/* the pen that does the writing: it crosses with the name, then lifts away */}
+        <svg className="nm-pen" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 20l1.2-4.5L16.5 4.200a1.7 1.7 0 0 1 2.400 0l.9.9a1.7 1.7 0 0 1 0 2.400L8.5 18.800 4 20z" />
+          <path d="M14.5 6.200l3.300 3.300" />
+        </svg>
+        <svg className="nm-flourish" viewBox="0 0 200 14" preserveAspectRatio="none" aria-hidden="true">
           <path d="M3 8c30-7 62 6 96 1s60-8 98-1" />
         </svg>
+        {stamped && (
+          <span id="stamp" className="nm-stamp" aria-hidden="true">
+            Handcoded
+          </span>
+        )}
       </a>
     </p>
   )
@@ -322,8 +344,6 @@ function App() {
   // open beside the page on a wide screen; closed, as a drawer, on a phone
   const [sidebar, setSidebar] = useState(() => window.matchMedia(WIDE).matches)
   const [busy, setBusy] = useState(false)
-  // goes up each time the signed credit is clicked; each one is a burst of confetti
-  const [cheers, setCheers] = useState(0)
   // how many pictures everyone has made so far; null when that is not known
   const [made, setMade] = useState<Totals | null>(null)
   useEffect(() => {
@@ -803,7 +823,6 @@ function App() {
           sidebar ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-[4.75rem]'
         }`}
       >
-        {cheers > 0 && <Confetti key={cheers} />}
         <button
           id="sidebar-toggle"
           className={`nm-btn nm-btn-icon ${sidebar ? 'self-end' : 'self-center'}`}
@@ -848,7 +867,7 @@ function App() {
             </div>
           )}
           {sidebar && (
-            <SignedCredit onCelebrate={() => setCheers((count) => count + 1)} />
+            <SignedCredit />
           )}
           <button
             id="theme"
