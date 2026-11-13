@@ -252,6 +252,40 @@ function Confetti() {
   )
 }
 
+/**
+ * The developer's credit, signed: the name is written out in handwriting as if by a pen,
+ * in ink that shifts between the app's purple and yellow, and underlined with a flourish.
+ * Pointing at it signs it again; clicking it throws confetti before the link opens.
+ */
+function SignedCredit({ onCelebrate }: { onCelebrate: () => void }) {
+  // goes up each time the pointer arrives, which starts the writing afresh
+  const [signing, setSigning] = useState(0)
+  return (
+    // the pointer is watched on the outer element, which stays put: the link inside is
+    // replaced to restart its writing, and a replaced element would see the pointer arrive again
+    <p
+      id="sidebar-credit"
+      className="flex w-fit flex-col px-1"
+      onMouseEnter={() => setSigning((count) => count + 1)}
+    >
+      <span className="text-soft text-xs font-semibold">Developed by</span>
+      <a
+        key={signing}
+        className="nm-signed"
+        href="https://github.com/Kunal-Khairnar-05"
+        target="_blank"
+        rel="noreferrer"
+        onClick={onCelebrate}
+      >
+        <span className="nm-signed-name">Kunal Khairnar</span>
+        <svg viewBox="0 0 200 14" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M3 8c30-7 62 6 96 1s60-8 98-1" />
+        </svg>
+      </a>
+    </p>
+  )
+}
+
 /** The result's checklist: what the form asks for beside what the file has. */
 function Checklist({ checks }: { checks: Check[] }) {
   return (
@@ -288,6 +322,8 @@ function App() {
   // open beside the page on a wide screen; closed, as a drawer, on a phone
   const [sidebar, setSidebar] = useState(() => window.matchMedia(WIDE).matches)
   const [busy, setBusy] = useState(false)
+  // goes up each time the signed credit is clicked; each one is a burst of confetti
+  const [cheers, setCheers] = useState(0)
   // how many pictures everyone has made so far; null when that is not known
   const [made, setMade] = useState<Totals | null>(null)
   useEffect(() => {
@@ -767,6 +803,7 @@ function App() {
           sidebar ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-[4.75rem]'
         }`}
       >
+        {cheers > 0 && <Confetti key={cheers} />}
         <button
           id="sidebar-toggle"
           className={`nm-btn nm-btn-icon ${sidebar ? 'self-end' : 'self-center'}`}
@@ -811,17 +848,7 @@ function App() {
             </div>
           )}
           {sidebar && (
-            <p id="sidebar-credit" className="text-soft px-1 text-xs">
-              Developed by{' '}
-              <a
-                className="font-semibold text-[var(--ink)] underline underline-offset-2"
-                href="https://github.com/Kunal-Khairnar-05"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Kunal Khairnar
-              </a>
-            </p>
+            <SignedCredit onCelebrate={() => setCheers((count) => count + 1)} />
           )}
           <button
             id="theme"

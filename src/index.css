@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/plus-jakarta-sans';
+@import '@fontsource-variable/caveat';
 
 @theme {
   --font-sans: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
@@ -269,6 +270,67 @@ body {
     font-size: 1.125rem;
     font-weight: 800;
     line-height: 2.125rem;
+  }
+
+  /*
+   * The signed credit: handwriting, in ink that drifts between purple and yellow, revealed
+   * from left to right as if being written, then underlined with a stroke that draws itself.
+   */
+  .nm-signed {
+    position: relative;
+    display: inline-block;
+    width: fit-content;
+    padding: 0 0.25rem 0.5rem 0;
+    font-family: 'Caveat Variable', cursive;
+    font-size: 1.875rem;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    transform-origin: left center;
+    transition: transform 200ms ease;
+  }
+
+  .nm-signed:hover {
+    transform: rotate(-3deg) scale(1.06);
+  }
+
+  .nm-signed-name {
+    display: inline-block;
+    background: linear-gradient(
+        100deg,
+        var(--primary-dark),
+        var(--field-dark) 30%,
+        var(--primary-strong) 55%,
+        var(--field-dark) 80%,
+        var(--primary-dark)
+      )
+      0 0 / 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation:
+      nm-write 1300ms cubic-bezier(0.6, 0, 0.3, 1) both,
+      nm-ink 6s linear infinite;
+  }
+
+  .nm-signed svg {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 0.75rem;
+    overflow: visible;
+  }
+
+  .nm-signed path {
+    fill: none;
+    stroke: var(--primary-strong);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    /* longer than the stroke, so the whole of it starts out hidden */
+    stroke-dasharray: 220;
+    stroke-dashoffset: 220;
+    animation: nm-underline 600ms ease-out 1200ms forwards;
   }
 
   /* a panel that stands out of the page */
@@ -627,6 +689,27 @@ body {
   }
 }
 
+@keyframes nm-write {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 -10% 0 0);
+  }
+}
+
+@keyframes nm-ink {
+  to {
+    background-position: 300% 0;
+  }
+}
+
+@keyframes nm-underline {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 @keyframes nm-fill {
   from {
     transform: scaleX(0);
@@ -701,6 +784,17 @@ body {
   }
   .nm-confetti {
     display: none;
+  }
+  /* the signature is simply there: written, underlined, in still ink */
+  .nm-signed-name {
+    animation: none;
+  }
+  .nm-signed path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .nm-signed:hover {
+    transform: none;
   }
   /* the card still has to finish its turn to show the new digit, so it does so at once */
   .fc-leaf-top,
