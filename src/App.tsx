@@ -18,16 +18,15 @@ import {
   UploadIcon,
 } from './icons'
 import type { Exported } from './pipeline/export'
-import { processPhoto, type Quality } from './pipeline/process'
+import type { Quality } from './pipeline/process'
 import type { Rect, Spec } from './pipeline/types'
-import { processSignature } from './signature/process'
 import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from './spec/fields'
-import { measurePicture, type Measured } from './spec/estimate'
+import type { Measured } from './spec/estimate'
 import { badFields, cropCaution, resolveChecked, suggest } from './spec/feasibility'
 import { PortalPicker } from './PortalPicker'
 import { chosenPortal } from './spec/portals'
 import { SpecForm } from './SpecForm'
-import { guessTurns, rotateFile } from './upright'
+import { Cancelled, cancelAll, run } from './worker/client'
 
 /** What is being made. Each kind has its own pipeline and its own form details. */
 type Kind = 'photo' | 'signature'
@@ -383,11 +382,11 @@ function App() {
     // wait for the crop box to stop moving before doing the work
     const timer = setTimeout(async () => {
       try {
-        const measured = await measurePicture(
+        const measured = await run('measurePicture', [
           picture.blob,
           { x: regionX, y: regionY, width: regionWidth, height: regionHeight },
           { widthPx, heightPx, format, background: '#ffffff' },
-        )
+        ])
         if (!cancelled) setWeighed({ key: weighKey, measured })
       } catch {
         // a picture that cannot be weighed is not held up for it; Create still reports problems
@@ -468,9 +467,11 @@ function App() {
     setTurnNote('')
     setOrienting(true)
     try {
-      const turns = await guessTurns(file, kind)
+      // loading what Create will need starts now, while the user is still cropping
+      void run('warm', [kind, quality]).catch(() => {})
+      const turns = await run('guessTurns', [file, kind])
       if (turns !== 0 && count === pickCount.current) {
-        const upright = await rotateFile(file, turns)
+        const upright = await run('rotateFile', [file, turns])
         // a newer picture may have been chosen while this one was being turned
         if (count !== pickCount.current) return
         show(upright, file.name)
@@ -491,7 +492,7 @@ function App() {
     if (!picture) return
     const count = ++pickCount.current
     const { name } = picture
-    const turned = await rotateFile(picture.blob, 1)
+    const turned = await run('rotateFile', [picture.blob, 1])
     if (count !== pickCount.current) return
     show(turned, name)
     setTurnNote('')
@@ -512,19 +513,6 @@ function App() {
     setSignatureTurns(null)
     clearResult()
     setInfo('')
-  }
-
-  // show the stage, then give the page a moment to paint it before the heavy work starts
-  const onStage = (next: string) => {
-    setStage(next)
-    // a tab in the background is not painted at all, and waiting for a frame there would
-    // hold the work up until the user comes back
-    if (document.hidden) return
-    return new Promise<void>((resolve) => {
-      requestAnimationFrame(() => setTimeout(resolve, 0))
-      // in case the tab is hidden while waiting
-      setTimeout(resolve, 100)
-    })
   }
 
   function onKind(next: Kind) {
@@ -669,7 +657,7 @@ function App() {
 
     try {
       if (kind === 'signature') {
-        const result = await processSignature(file, spec, chosen, forcedTurns, onStage)
+        const result = await run('processSignature', [file, spec, chosen, forcedTurns], setStage)
         const { image, stages, timingsMs } = result
         setSignatureTurns(result.turns)
         const ctx = drawSource(image)
@@ -689,12 +677,10 @@ function App() {
         return
       }
 
-      const { image, turns, faceCount, stages, timingsMs } = await processPhoto(
-        file,
-        spec,
-        quality,
-        chosen,
-        onStage,
+      const { image, turns, faceCount, stages, timingsMs } = await run(
+        'processPhoto',
+        [file, spec, quality, chosen],
+        setStage,
       )
       const ctx = drawSource(image)
       const turned = turns === 0 ? '' : `, turned ${turns * 90} degrees`
@@ -728,7 +714,10 @@ function App() {
       drawBefore(image, box, spec)
       showResult(final, exported, spec)
     } catch (error) {
-      setInfo(`Something went wrong: ${error instanceof Error ? error.message : String(error)}`)
+      // stopped by the user: nothing went wrong
+      if (!(error instanceof Cancelled)) {
+        setInfo(`Something went wrong: ${error instanceof Error ? error.message : String(error)}`)
+      }
     } finally {
       setBusy(false)
       setStage('')
@@ -1039,6 +1028,9 @@ function App() {
                   {stage || 'Starting'}
                 </p>
                 <div className="nm-progress" />
+                <button id="cancel" className="nm-btn self-start" onClick={cancelAll}>
+                  Cancel
+                </button>
                 <p key={aside} id="aside" className="nm-arrive text-soft text-xs italic">
                   {ASIDES[kind][aside % ASIDES[kind].length]}
                 </p>

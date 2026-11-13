@@ -1,4 +1,4 @@
-import { getMatteSession, ort } from './ort'
+import { getMatteSession, loadOrt } from './ort'
 import { upscaleMask } from './upscaleMask'
 
 // MODNet wants the shorter side at 512 px and both sides as multiples of 32
@@ -28,7 +28,7 @@ export async function matte(image: ImageBitmap): Promise<Float32Array> {
   }
 
   // 2. Inference
-  const session = await getMatteSession()
+  const [ort, session] = await Promise.all([loadOrt(), getMatteSession()])
   const feeds = { [session.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, height, width]) }
   const results = await session.run(feeds)
   const output = results[session.outputNames[0]].data as Float32Array
