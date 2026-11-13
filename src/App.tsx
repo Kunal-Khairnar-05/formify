@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { fetchTotals, reportMade } from './counter/client'
+import type { Totals } from './counter/server'
 import { CropBox } from './CropBox'
 import { fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
 import {
@@ -144,7 +146,7 @@ const QUESTIONS = [
   {
     ask: 'Is my photo uploaded anywhere?',
     answer:
-      'No. Everything runs in your browser on this device. The page downloads the models it needs, and your photo and the result never leave your device.',
+      'No. Everything runs in your browser on this device. The page downloads the models it needs, and your photo and the result never leave your device. The one thing the page sends is a count of one each time a picture is made, with nothing about you or the picture.',
   },
   {
     ask: 'Will the portal accept the result?',
@@ -285,6 +287,17 @@ function App() {
   // open beside the page on a wide screen; closed, as a drawer, on a phone
   const [sidebar, setSidebar] = useState(() => window.matchMedia(WIDE).matches)
   const [busy, setBusy] = useState(false)
+  // how many pictures everyone has made so far; null when that is not known
+  const [made, setMade] = useState<Totals | null>(null)
+  useEffect(() => {
+    let current = true
+    void fetchTotals().then((totals) => {
+      if (current && totals) setMade(totals)
+    })
+    return () => {
+      current = false
+    }
+  }, [])
   // what the pipeline is doing right now, in words; shown while working
   const [stage, setStage] = useState('')
   // true while a file is held over the drop area
@@ -637,6 +650,10 @@ function App() {
       notes,
     })
     if (problems.length === 0) {
+      // one more picture made: only its kind is sent, and a failure to count changes nothing
+      void reportMade(kind).then((totals) => {
+        if (totals) setMade(totals)
+      })
       // copy into a fresh buffer: Blob does not accept a view over a shared one
       const type = { jpg: 'image/jpeg', png: 'image/png', svg: 'image/svg+xml' }[spec.format]
       setDownload(URL.createObjectURL(new Blob([bytes.slice()], { type })))
@@ -1183,15 +1200,35 @@ function App() {
         </main>
 
         <footer className="text-soft flex flex-wrap items-center justify-between gap-2 px-4 pb-6 text-xs sm:px-8">
-          <p>Formify. Check the result against your portal's own instructions before you upload.</p>
-          <a
-            className="font-semibold underline underline-offset-2"
-            href="https://github.com/Kunal-Khairnar-05/formify"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Source on GitHub
-          </a>
+          <div className="flex flex-col gap-1">
+            {made && made.total > 0 && (
+              <p id="made-count" className="font-semibold text-[var(--ink)]">
+                {made.total.toLocaleString('en-IN')} {made.total === 1 ? 'picture' : 'pictures'} made with
+                Formify so far
+              </p>
+            )}
+            <p>Check the result against your portal's own instructions before you upload.</p>
+          </div>
+          <p id="credit">
+            Developed by{' '}
+            <a
+              className="font-semibold text-[var(--ink)] underline underline-offset-2"
+              href="https://github.com/Kunal-Khairnar-05"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Kunal Khairnar
+            </a>
+            {' · '}
+            <a
+              className="font-semibold underline underline-offset-2"
+              href="https://github.com/Kunal-Khairnar-05/formify"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Source on GitHub
+            </a>
+          </p>
         </footer>
       </div>
     </div>
