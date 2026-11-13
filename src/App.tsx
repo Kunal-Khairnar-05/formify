@@ -961,11 +961,18 @@ function App() {
               onChange={setFields}
             />
             {kind === 'photo' && (
-              <label className={toggle}>
-                <span>
-                  Finer hair edges
+              // the one extra the app offers: set apart from the plain form boxes above it
+              <label className={`nm-feature ${quality === 'fine' ? 'nm-feature-on' : ''}`}>
+                <span className="nm-feature-icon">
+                  <SparkIcon />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2 text-sm font-bold">
+                    Finer hair edges
+                    <span className="nm-badge">HD</span>
+                  </span>
                   <span className="text-soft block text-xs font-medium">
-                    Downloads a 26 MB model once; a little slower.
+                    Keeps loose strands of hair. A little slower.
                   </span>
                 </span>
                 <input
