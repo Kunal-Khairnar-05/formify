@@ -6,6 +6,7 @@ import { faceGeometry } from './faceGeometry'
 import { dilate, limitTo, softOutside } from './gate'
 import type { Region } from '../crop/region'
 import { loadImage } from './loadImage'
+import { pickMainFace } from './mainFace'
 import { hairTop, keepConnected, sharpenMask } from './mask'
 import { matte } from './matte'
 import { detectUpright } from './orient'
@@ -68,9 +69,13 @@ export async function processPhoto(
 
   const { image, faces, turns } = await detectUpright(loaded)
   lap('faces')
-  if (faces.length !== 1) return { image, turns, faceCount: faces.length, timingsMs }
+  // several faces are fine when one is clearly the subject: a neighbour at the edge of a
+  // selfie is dropped later, with everything else that is not attached to this person
+  const geometries = faces.map((face) => faceGeometry(face, image.width, image.height))
+  const main = pickMainFace(geometries.map((geometry) => geometry.box))
+  if (main === null) return { image, turns, faceCount: faces.length, timingsMs }
 
-  const meshFace = faceGeometry(faces[0], image.width, image.height)
+  const meshFace = geometries[main]
   const rawMask = await segment(image)
   lap('segment')
 
@@ -108,6 +113,12 @@ export async function processPhoto(
   lap('mask, crop, resize')
 
   const warnings: string[] = []
+  if (faces.length > 1) {
+    warnings.push(
+      'More than one face is in the photo. The largest one was used; check that the result ' +
+        'shows only you.',
+    )
+  }
   if (box.width < spec.widthPx) {
     warnings.push(
       `Low resolution: the crop is ${box.width} x ${box.height} px but the form needs ` +
@@ -130,7 +141,7 @@ export async function processPhoto(
   return {
     image,
     turns,
-    faceCount: 1,
+    faceCount: faces.length,
     stages: { face, mask, box, final, exported, warnings },
     timingsMs,
   }
