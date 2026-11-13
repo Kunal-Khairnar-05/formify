@@ -287,6 +287,9 @@ function SignedCredit() {
       onMouseEnter={() => setStamped(true)}
       onMouseLeave={() => setStamped(false)}
     >
+      <span id="version" className="text-soft mb-2 text-xs font-bold tracking-wide">
+        v{__APP_VERSION__}
+      </span>
       <span className="text-soft text-xs font-semibold">Developed by</span>
       <a className="nm-signed" href={PROFILE} target="_blank" rel="noreferrer" onClick={onTap}>
         <span className="nm-signed-name">Kunal Khairnar</span>
@@ -897,12 +900,7 @@ function App() {
             <img src="/favicon.svg" alt="" className="h-6 w-6" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="flex items-baseline gap-2 text-xl leading-tight font-extrabold tracking-tight">
-              Formify
-              <span id="version" className="text-soft text-xs font-semibold tracking-normal">
-                v{__APP_VERSION__}
-              </span>
-            </p>
+            <p className="text-xl leading-tight font-extrabold tracking-tight">Formify</p>
             <h1 className="text-soft truncate text-sm font-semibold">{current.title}</h1>
           </div>
           {/* how many pictures everyone has made; each new one turns the cards over */}
@@ -1266,27 +1264,6 @@ function App() {
 
         <footer className="text-soft flex flex-wrap items-center justify-between gap-2 px-4 pb-6 text-xs sm:px-8">
           <p>Check the result against your portal's own instructions before you upload.</p>
-          <p id="credit">
-            Developed by{' '}
-            <a
-              className="font-semibold text-[var(--ink)] underline underline-offset-2"
-              href="https://github.com/Kunal-Khairnar-05"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Kunal Khairnar
-            </a>
-            {' · '}
-            <a
-              className="font-semibold underline underline-offset-2"
-              href="https://github.com/Kunal-Khairnar-05/formify"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Source on GitHub
-            </a>
-            {' · '}v{__APP_VERSION__}
-          </p>
         </footer>
       </div>
     </div>
