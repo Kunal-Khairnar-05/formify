@@ -66,6 +66,18 @@ describe('uprightTurns', () => {
     expect(guess(['####', '....', '####']).confident).toBe(false)
   })
 
+  it('does not turn a picture upside down on weak evidence', () => {
+    // slightly top-heavy, but nowhere near enough to be sure
+    const rows = ['#####################', '.....................', '####################.']
+    expect(guess(rows)).toEqual({ turns: 0, confident: false })
+  })
+
+  it('still picks a direction for a sideways signature on weak evidence', () => {
+    const result = guess(['#.#', '#.#', '#.#', '#.#', '#.#', '#.#'])
+    expect(result.confident).toBe(false)
+    expect([1, 3]).toContain(result.turns)
+  })
+
   it('is not confident about an empty mask', () => {
     expect(guess(['....', '....'])).toEqual({ turns: 0, confident: false })
   })

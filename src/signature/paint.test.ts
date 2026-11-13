@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { inkColour, thickenBy } from './paint'
+import { inkColour, sharpen, thickenBy } from './paint'
 
 describe('inkColour', () => {
   it('averages the pixels that are clearly ink', () => {
@@ -35,6 +35,28 @@ describe('thickenBy', () => {
       const after = (2 + 2 * thickenBy(shrink)) / shrink
       expect(after).toBeGreaterThan(1)
       expect(after).toBeLessThan(1.9)
+    }
+  })
+})
+
+describe('sharpen', () => {
+  it('sends faint edges to paper and strong ones to ink', () => {
+    expect(sharpen(0)).toBe(0)
+    expect(sharpen(0.3)).toBe(0)
+    expect(sharpen(0.7)).toBe(1)
+    expect(sharpen(1)).toBe(1)
+  })
+
+  it('keeps the half-way point where it is', () => {
+    expect(sharpen(0.5)).toBeCloseTo(0.5)
+  })
+
+  it('rises steadily in between', () => {
+    let previous = 0
+    for (let a = 0.3; a <= 0.7; a += 0.05) {
+      const value = sharpen(a)
+      expect(value).toBeGreaterThanOrEqual(previous)
+      previous = value
     }
   })
 })

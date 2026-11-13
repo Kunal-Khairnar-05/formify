@@ -3,13 +3,12 @@ import { exportJpeg, type Exported } from '../pipeline/exportJpeg'
 import { loadImage } from '../pipeline/loadImage'
 import { rotateQuarter } from '../pipeline/orient'
 import { cropSource } from '../pipeline/precrop'
-import { cropAndResize } from '../pipeline/resize'
 import type { Rect, Spec } from '../pipeline/types'
 import { signatureBox } from './box'
 import { pickContrast } from './contrast'
 import { darkness, inkBounds, inkMask, luminance } from './ink'
 import { dropFragments, dropLines } from './lines'
-import { paintInk } from './paint'
+import { drawSignature } from './paint'
 import { uprightTurns } from './upright'
 
 // a signature needs less detail than a face, and the ink search is quicker on a smaller image
@@ -107,11 +106,15 @@ export async function processSignature(
   if (!ink) return { image, turns: applied, guessed, timingsMs }
 
   const box = signatureBox(ink, spec.widthPx / spec.heightPx, MARGIN)
-  // how many photo pixels become one output pixel
-  const shrink = box.width / spec.widthPx
   // only the ink is kept, redrawn in one colour; the paper becomes the background
-  const painted = paintInk(pixels, mask, spec.background, shrink)
-  const final = await cropAndResize(painted, box, spec.widthPx, spec.heightPx, spec.background)
+  const final = await drawSignature(
+    pixels,
+    mask,
+    box,
+    spec.widthPx,
+    spec.heightPx,
+    spec.background,
+  )
   lap('crop, resize')
 
   const warnings: string[] = []
@@ -121,7 +124,8 @@ export async function processSignature(
         'Use Rotate if it is still the wrong way round.',
     )
   }
-  if (guessed && !confident) {
+  // an unsure guess matters only when the picture was turned on the strength of it
+  if (guessed && !confident && applied !== 0) {
     warnings.push('Could not tell for sure which way up the signature is. Use Rotate if it is wrong.')
   }
   if (box.width < spec.widthPx) {

@@ -55,5 +55,7 @@ export function uprightTurns(mask: Float32Array, width: number, ink: Rect): Upri
   const confident = Math.abs(offset) >= CONFIDENT
 
   if (sideways) return { turns: heavyEnd ? 1 : 3, confident }
-  return { turns: heavyEnd ? 0 : 2, confident }
+  // turning a picture upside down on weak evidence does more harm than leaving it:
+  // most photos are taken the right way up
+  return { turns: heavyEnd || !confident ? 0 : 2, confident }
 }

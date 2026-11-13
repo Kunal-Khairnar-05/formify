@@ -50,48 +50,101 @@ function spreadRows(bits: Uint8Array, width: number, height: number, reach: numb
   return out
 }
 
-/** Keep only the set pixels that connect, through other set pixels, to the left or right edge. */
-function fromSides(bits: Uint8Array, width: number, height: number): Uint8Array {
-  const out = new Uint8Array(bits.length)
+/**
+ * Number the groups of set pixels that connect, through other set pixels, to the left or
+ * right edge: 1, 2, 3... per group, 0 everywhere else.
+ */
+function groupsFromSides(bits: Uint8Array, width: number, height: number): Int32Array {
+  const labels = new Int32Array(bits.length)
   const stack: number[] = []
+  let label = 0
   const visit = (index: number) => {
-    if (bits[index] === 1 && out[index] === 0) {
-      out[index] = 1
+    if (bits[index] === 1 && labels[index] === 0) {
+      labels[index] = label
       stack.push(index)
     }
   }
-  for (let y = 0; y < height; y++) {
-    visit(y * width)
-    visit(y * width + width - 1)
-  }
-  while (stack.length > 0) {
-    const index = stack.pop()!
-    const x = index % width
-    const y = (index - x) / width
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx
-        const ny = y + dy
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) visit(ny * width + nx)
+  const spread = (seed: number) => {
+    if (bits[seed] !== 1 || labels[seed] !== 0) return
+    label++
+    visit(seed)
+    while (stack.length > 0) {
+      const index = stack.pop()!
+      const x = index % width
+      const y = (index - x) / width
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) visit(ny * width + nx)
+        }
       }
     }
   }
-  return out
+  for (let y = 0; y < height; y++) {
+    spread(y * width)
+    spread(y * width + width - 1)
+  }
+  return labels
+}
+
+/** The straight line y = slope * x + offset that best fits the points (least squares). */
+function fitLine(points: [x: number, y: number][]): { slope: number; offset: number } {
+  let sumX = 0
+  let sumY = 0
+  for (const [x, y] of points) {
+    sumX += x
+    sumY += y
+  }
+  const meanX = sumX / points.length
+  const meanY = sumY / points.length
+
+  let top = 0
+  let bottom = 0
+  for (const [x, y] of points) {
+    top += (x - meanX) * (y - meanY)
+    bottom += (x - meanX) * (x - meanX)
+  }
+  const slope = bottom === 0 ? 0 : top / bottom
+  return { slope, offset: meanY - slope * meanX }
+}
+
+/** Call `each` for every unbroken top-to-bottom run of set pixels: column, first row, row after last. */
+function columnRuns(
+  bits: Uint8Array,
+  width: number,
+  height: number,
+  each: (x: number, from: number, to: number) => void,
+): void {
+  for (let x = 0; x < width; x++) {
+    let start = -1
+    for (let y = 0; y <= height; y++) {
+      const set = y < height && bits[y * width + x] === 1
+      if (set && start === -1) start = y
+      if (!set && start !== -1) {
+        each(x, start, y)
+        start = -1
+      }
+    }
+  }
 }
 
 /** Clear the ruled lines that run from side to side. */
 function dropAcross(dark: Float32Array, width: number, height: number, contrast: number): Float32Array {
   const drift = Math.max(2, Math.round(width * DRIFT))
-  // a ruled line is thin; anything taller at that spot is a pen stroke on or across the line
-  const thickest = drift + 1
 
   const isDark = new Uint8Array(dark.length)
   for (let i = 0; i < dark.length; i++) isDark[i] = dark[i] > contrast ? 1 : 0
 
   // a band around everything dark: inside it a tilted line reads as one unbroken run
   const band = spreadRows(isDark, width, height, drift)
-  // ruled lines: long runs that reach the side of the picture, which handwriting does not
-  const lines = fromSides(longRuns(band, width, height, Math.round(width * LONG_RUN)), width, height)
+  // ruled lines: long runs that reach the side of the picture, which handwriting does not;
+  // each line gets its own number
+  const lines = groupsFromSides(
+    longRuns(band, width, height, Math.round(width * LONG_RUN)),
+    width,
+    height,
+  )
   // within those, only pixels that are part of a level run; one row of slack, because a
   // tilted line steps from row to row and its soft edge pixels drop out
   const level = longRuns(
@@ -101,24 +154,62 @@ function dropAcross(dark: Float32Array, width: number, height: number, contrast:
     Math.max(3, Math.round(width * SHORT_RUN)),
   )
 
-  const out = new Float32Array(dark)
-  for (let x = 0; x < width; x++) {
-    let start = -1
-    for (let y = 0; y <= height; y++) {
-      const set = y < height && isDark[y * width + x] === 1
-      if (set && start === -1) start = y
-      if (!set && start !== -1) {
-        // a short vertical run: thin enough to be line rather than stroke
-        if (y - start <= thickest) {
-          for (let k = start; k < y; k++) {
-            const index = k * width + x
-            if (lines[index] === 1 && level[index] === 1) out[index] = 0
-          }
-        }
-        start = -1
-      }
+  // which line, if any, a top-to-bottom run of dark pixels belongs to
+  const lineOf = (x: number, from: number, to: number) => {
+    for (let y = from; y < to; y++) {
+      if (lines[y * width + x] !== 0) return lines[y * width + x]
     }
+    return 0
   }
+
+  // how thick each line is: in a close-up it is many pixels, in a wide shot one or two, so
+  // it is measured rather than assumed. Most columns cross the bare line, so the middle
+  // value is the line's own thickness; columns where writing crosses it are taller.
+  const heights = new Map<number, number[]>()
+  columnRuns(isDark, width, height, (x, from, to) => {
+    const line = lineOf(x, from, to)
+    if (line === 0) return
+    if (!heights.has(line)) heights.set(line, [])
+    heights.get(line)!.push(to - from)
+  })
+  const thickness = new Map<number, number>()
+  for (const [line, list] of heights) {
+    list.sort((a, b) => a - b)
+    thickness.set(line, list[Math.floor(list.length / 2)])
+  }
+  const thickest = (line: number) => Math.ceil(thickness.get(line)! * 1.5) + 1
+
+  // where each line runs: a ruled line is straight, so a straight track is fitted through
+  // the centres of its bare pieces. A stroke that only passes close to the line, like the
+  // bottom of an "o" resting on it, is off the track and is left alone.
+  const centres = new Map<number, [x: number, y: number][]>()
+  columnRuns(isDark, width, height, (x, from, to) => {
+    const line = lineOf(x, from, to)
+    if (line === 0 || to - from > thickest(line)) return
+    if (!centres.has(line)) centres.set(line, [])
+    centres.get(line)!.push([x, (from + to - 1) / 2])
+  })
+  const tracks = new Map<number, { slope: number; offset: number }>()
+  for (const [line, points] of centres) {
+    const first = fitLine(points)
+    // fit again without the points that are far off: those are strokes, not the line
+    const reach = Math.max(2, thickness.get(line)!)
+    const near = points.filter(([x, y]) => Math.abs(y - (first.slope * x + first.offset)) <= reach)
+    tracks.set(line, near.length >= 2 ? fitLine(near) : first)
+  }
+
+  const out = new Float32Array(dark)
+  columnRuns(isDark, width, height, (x, from, to) => {
+    const line = lineOf(x, from, to)
+    // taller than the line: a pen stroke on or across it, which is kept whole
+    if (line === 0 || to - from > thickest(line)) return
+    const track = tracks.get(line)!
+    const off = Math.abs((from + to - 1) / 2 - (track.slope * x + track.offset))
+    if (off > thickness.get(line)! / 2 + 1.5) return
+    for (let y = from; y < to; y++) {
+      if (level[y * width + x] === 1) out[y * width + x] = 0
+    }
+  })
   return out
 }
 
