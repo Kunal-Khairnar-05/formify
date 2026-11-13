@@ -22,7 +22,7 @@ import { processPhoto, type Quality } from './pipeline/process'
 import type { Rect, Spec } from './pipeline/types'
 import { processSignature } from './signature/process'
 import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from './spec/fields'
-import { resolveSpec } from './spec/units'
+import { cropCaution, resolveChecked } from './spec/feasibility'
 import { SpecForm } from './SpecForm'
 
 /** What is being made. Each kind has its own pipeline and its own form details. */
@@ -207,7 +207,7 @@ function App() {
   // quarter turns used for the last signature, so Rotate can go one further; null before any
   const [signatureTurns, setSignatureTurns] = useState<number | null>(null)
   const lastFile = useRef<File | undefined>(undefined)
-  const resolved = resolveSpec(parseFields(fields))
+  const resolved = resolveChecked(parseFields(fields), kind)
   const current = KINDS.find((entry) => entry.value === kind)!
   const hasResult = summary !== null || failure !== ''
 
@@ -225,6 +225,11 @@ function App() {
   // a new output shape, or switching the lock, starts the crop again
   const region = custom && custom.aspect === aspect ? custom.region : startRegion
   const setRegion = (next: Region) => setCustom({ aspect, region: next })
+  // known before anything is made: whether the chosen part holds enough pixels
+  const tooSmall =
+    photoSize && resolved.ok && kind === 'photo'
+      ? cropCaution(region.width * photoSize.width, region.height * photoSize.height, resolved.spec)
+      : null
 
   function switchTheme() {
     const next: Theme = theme === 'dark' ? 'light' : 'dark'
@@ -255,6 +260,10 @@ function App() {
   // choosing a photo only shows it for cropping; nothing is processed until Create is pressed
   function onPick(file: File | undefined) {
     if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setInfo(`${file.name} is not a picture. Choose a JPG or PNG file.`)
+      return
+    }
     lastFile.current = file
     setPreview((previous) => {
       if (previous) URL.revokeObjectURL(previous)
@@ -608,6 +617,11 @@ function App() {
                   aspect={aspect}
                   onChange={setRegion}
                   onSize={(width, height) => setPhotoSize({ width, height })}
+                  onError={() => {
+                    const name = lastFile.current?.name ?? 'That file'
+                    startOver()
+                    setInfo(`${name} could not be opened as a picture. Choose a JPG or PNG file.`)
+                  }}
                 />
               ) : (
                 <label
@@ -631,6 +645,12 @@ function App() {
                 onChange={(e) => onPick(e.target.files?.[0])}
               />
             </div>
+            {tooSmall && (
+              <p id="crop-caution" className="nm-note">
+                <AlertIcon />
+                {tooSmall}
+              </p>
+            )}
             {preview && (
               <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
                 <label htmlFor="photo" className="nm-btn">

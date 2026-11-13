@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ChevronIcon } from './icons'
+import { AlertIcon, ChevronIcon } from './icons'
 import type { SpecFields } from './spec/fields'
 import { parseInstructions } from './spec/instructions'
-import type { Resolved, Unit } from './spec/units'
+import type { Checked } from './spec/feasibility'
+import type { Unit } from './spec/units'
 
 const UNITS: { value: Unit; label: string }[] = [
   { value: 'cm', label: 'cm' },
@@ -37,7 +38,7 @@ const group = 'text-soft text-xs font-bold tracking-wide'
 interface Props {
   kind: 'photo' | 'signature'
   fields: SpecFields
-  resolved: Resolved
+  resolved: Checked
   onChange: (fields: SpecFields) => void
 }
 
@@ -231,16 +232,31 @@ export function SpecForm({ kind, fields, resolved, onChange }: Props) {
       </div>
 
       {resolved.ok ? (
-        <p id="spec-summary" className="card px-3 py-2.5 text-sm font-semibold">
-          <span className="text-soft font-medium">Your file will be </span>
-          {resolved.spec.widthPx} x {resolved.spec.heightPx} px, JPG
-        </p>
+        <>
+          <p id="spec-summary" className="card px-3 py-2.5 text-sm font-semibold">
+            <span className="text-soft font-medium">Your file will be </span>
+            {resolved.spec.widthPx} x {resolved.spec.heightPx} px, JPG
+          </p>
+          {resolved.cautions.length > 0 && (
+            <ul id="spec-cautions" className="flex flex-col gap-2">
+              {resolved.cautions.map((caution) => (
+                <li key={caution} className="nm-note">
+                  <AlertIcon />
+                  {caution}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       ) : (
-        <ul id="spec-errors" className="nm-danger list-disc pl-5 text-sm font-medium">
-          {resolved.errors.map((error) => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
+        <div id="spec-errors" role="alert" className="nm-danger card flex flex-col gap-2 p-3 text-sm font-medium">
+          <p className="font-bold">This cannot be made yet</p>
+          <ul className="list-disc pl-5">
+            {resolved.errors.map((error) => (
+              <li key={error}>{error}</li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )
