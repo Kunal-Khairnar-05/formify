@@ -22,6 +22,17 @@ export const DEFAULT_FIELDS: SpecFields = {
   background: '#ffffff',
 }
 
+/** 140 x 60 px, 10 to 20 KB, white background: a common signature requirement. */
+export const SIGNATURE_FIELDS: SpecFields = {
+  width: '140',
+  height: '60',
+  unit: 'px',
+  dpi: '200',
+  minKb: '10',
+  maxKb: '20',
+  background: '#ffffff',
+}
+
 // an empty or non-numeric box becomes NaN, which resolveSpec reports as a problem
 const required = (text: string) => (text.trim() === '' ? Number.NaN : Number(text))
 

@@ -1,11 +1,21 @@
 import { useRef, useState } from 'react'
 import { CropBox } from './CropBox'
 import { fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
+import type { Exported } from './pipeline/exportJpeg'
 import { processPhoto, type Quality } from './pipeline/process'
-import type { Spec } from './pipeline/types'
-import { DEFAULT_FIELDS, parseFields, type SpecFields } from './spec/fields'
+import type { Rect, Spec } from './pipeline/types'
+import { processSignature } from './signature/process'
+import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from './spec/fields'
 import { resolveSpec } from './spec/units'
 import { SpecForm } from './SpecForm'
+
+/** What is being made. Each kind has its own pipeline and its own form details. */
+type Kind = 'photo' | 'signature'
+
+const KINDS: { value: Kind; label: string }[] = [
+  { value: 'photo', label: 'Photo' },
+  { value: 'signature', label: 'Signature' },
+]
 
 /** The size limits as text, e.g. "20 to 50 KB". */
 function limitText(spec: Spec): string {
@@ -15,17 +25,29 @@ function limitText(spec: Spec): string {
   return 'none'
 }
 
+const timingText = (timingsMs: Record<string, number>) =>
+  Object.entries(timingsMs)
+    .map(([name, ms]) => `${name} ${ms} ms`)
+    .join(', ')
+
 // Debug page: shows each pipeline stage as it is built. Replaced by the real UI later.
 function App() {
   const sourceRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
   const finalRef = useRef<HTMLCanvasElement>(null)
+  const [kind, setKind] = useState<Kind>('photo')
   const [info, setInfo] = useState('Choose a photo.')
   const [resultLine, setResultLine] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [download, setDownload] = useState<string | null>(null)
   const [quality, setQuality] = useState<Quality>('fast')
-  const [fields, setFields] = useState<SpecFields>(DEFAULT_FIELDS)
+  // each kind keeps its own details, so switching back and forth loses nothing
+  const [allFields, setAllFields] = useState<Record<Kind, SpecFields>>({
+    photo: DEFAULT_FIELDS,
+    signature: SIGNATURE_FIELDS,
+  })
+  const fields = allFields[kind]
+  const setFields = (next: SpecFields) => setAllFields({ ...allFields, [kind]: next })
   const [preview, setPreview] = useState<string | null>(null)
   // the user's own crop, with the shape it was made for; null means the starting crop
   const [custom, setCustom] = useState<{ aspect?: number; region: Region } | null>(null)
@@ -72,38 +94,111 @@ function App() {
     setPhotoSize(null)
     setCustom(null)
     clearResult()
-    setInfo('Move the box or drag its corners to crop, then press Create photo.')
+    setInfo(`Move the box or drag its corners to crop, then press Create ${kind}.`)
+  }
+
+  function onKind(next: Kind) {
+    setKind(next)
+    clearResult()
+  }
+
+  /** Draw the loaded image and hand back its context for the overlays. */
+  function drawSource(image: ImageBitmap): OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D {
+    const source = sourceRef.current!
+    source.width = image.width
+    source.height = image.height
+    const ctx = source.getContext('2d')!
+    ctx.drawImage(image, 0, 0)
+    return ctx
+  }
+
+  /** Mask as a picture: kept pixels white, dropped pixels black. */
+  function drawMask(mask: Float32Array, width: number, height: number) {
+    const maskCanvas = maskRef.current!
+    maskCanvas.width = width
+    maskCanvas.height = height
+    const maskImage = new ImageData(width, height)
+    for (let i = 0; i < mask.length; i++) {
+      const v = Math.round(mask[i] * 255)
+      maskImage.data[i * 4] = v
+      maskImage.data[i * 4 + 1] = v
+      maskImage.data[i * 4 + 2] = v
+      maskImage.data[i * 4 + 3] = 255
+    }
+    maskCanvas.getContext('2d')!.putImageData(maskImage, 0, 0)
+  }
+
+  /** Show the finished picture, its measurements, and the download when it is valid. */
+  function showResult(final: ImageData, exported: Exported | null, spec: Spec) {
+    const finalCanvas = finalRef.current!
+    finalCanvas.width = final.width
+    finalCanvas.height = final.height
+    finalCanvas.getContext('2d')!.putImageData(final, 0, 0)
+
+    if (!exported) {
+      setResultLine(
+        `Cannot fit ${spec.widthPx} x ${spec.heightPx} px into ${spec.maxKb} KB at readable quality.`,
+      )
+      return
+    }
+    const { bytes, quality, paddedBytes, measured, problems } = exported
+    const line =
+      `${(measured.bytes / 1000).toFixed(1)} KB (limit: ${limitText(spec)}) | ` +
+      `${measured.widthPx} x ${measured.heightPx} px | JPG | quality ${quality}` +
+      (paddedBytes > 0 ? ` | padded by ${(paddedBytes / 1000).toFixed(1)} KB to reach the minimum` : '')
+    if (problems.length > 0) {
+      setResultLine(`${line} | NOT VALID: ${problems.join('; ')}`)
+    } else {
+      setResultLine(line)
+      // copy into a fresh buffer: Blob does not accept a view over a shared one
+      setDownload(URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/jpeg' })))
+    }
+  }
+
+  const strokeRect = (ctx: ReturnType<typeof drawSource>, rect: Rect, colour: string) => {
+    ctx.lineWidth = 4
+    ctx.strokeStyle = colour
+    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
   }
 
   async function onCreate() {
     const file = lastFile.current
     if (!file || !resolved.ok) return
     const spec = resolved.spec
-    const mode = quality
+    const chosen = isFull(region) ? undefined : region
+    const loaded = `${file.name}: ${(file.size / 1000).toFixed(0)} KB`
     setInfo('Working...')
     clearResult()
 
     try {
+      if (kind === 'signature') {
+        const { image, stages, timingsMs } = await processSignature(file, spec, chosen)
+        const ctx = drawSource(image)
+        setInfo(`${loaded} -> ${image.width} x ${image.height} px. ${timingText(timingsMs)}`)
+        if (!stages) {
+          setResultLine('No signature found. Use a photo of dark ink on plain, light paper.')
+          return
+        }
+        setWarnings(stages.warnings)
+        // the ink alone, then the box that is cut out
+        strokeRect(ctx, stages.ink, '#f59e0b')
+        strokeRect(ctx, stages.box, '#2563eb')
+        drawMask(stages.mask, image.width, image.height)
+        showResult(stages.final, stages.exported, spec)
+        return
+      }
+
       const { image, turns, faceCount, stages, timingsMs } = await processPhoto(
         file,
         spec,
-        mode,
-        isFull(region) ? undefined : region,
+        quality,
+        chosen,
       )
-
-      const source = sourceRef.current!
-      source.width = image.width
-      source.height = image.height
-      const ctx = source.getContext('2d')!
-      ctx.drawImage(image, 0, 0)
-
-      const timings = Object.entries(timingsMs)
-        .map(([name, ms]) => `${name} ${ms} ms`)
-        .join(', ')
+      const ctx = drawSource(image)
       const turned = turns === 0 ? '' : `, turned ${turns * 90} degrees`
       setInfo(
-        `${file.name}: ${(file.size / 1000).toFixed(0)} KB -> ${image.width} x ${image.height} px${turned}, ` +
-          `${faceCount} face(s). ${timings}`,
+        `${loaded} -> ${image.width} x ${image.height} px${turned}, ` +
+          `${faceCount} face(s). ${timingText(timingsMs)}`,
       )
 
       if (!stages) {
@@ -118,9 +213,7 @@ function App() {
       setWarnings(stages.warnings)
 
       // crop box, eye line, crown-to-chin line
-      ctx.lineWidth = 4
-      ctx.strokeStyle = '#ffffff'
-      ctx.strokeRect(box.x, box.y, box.width, box.height)
+      strokeRect(ctx, box, '#ffffff')
       ctx.strokeStyle = '#f59e0b'
       ctx.beginPath()
       ctx.moveTo(face.leftEye.x, face.leftEye.y)
@@ -129,43 +222,8 @@ function App() {
       ctx.lineTo(face.chin.x, face.chin.y)
       ctx.stroke()
 
-      // person white, background black
-      const maskCanvas = maskRef.current!
-      maskCanvas.width = image.width
-      maskCanvas.height = image.height
-      const maskImage = new ImageData(image.width, image.height)
-      for (let i = 0; i < mask.length; i++) {
-        const v = Math.round(mask[i] * 255)
-        maskImage.data[i * 4] = v
-        maskImage.data[i * 4 + 1] = v
-        maskImage.data[i * 4 + 2] = v
-        maskImage.data[i * 4 + 3] = 255
-      }
-      maskCanvas.getContext('2d')!.putImageData(maskImage, 0, 0)
-
-      const finalCanvas = finalRef.current!
-      finalCanvas.width = final.width
-      finalCanvas.height = final.height
-      finalCanvas.getContext('2d')!.putImageData(final, 0, 0)
-
-      if (!exported) {
-        setResultLine(
-          `Cannot fit ${spec.widthPx} x ${spec.heightPx} px into ${spec.maxKb} KB at readable quality.`,
-        )
-        return
-      }
-      const { bytes, quality, paddedBytes, measured, problems } = exported
-      const line =
-        `${(measured.bytes / 1000).toFixed(1)} KB (limit: ${limitText(spec)}) | ` +
-        `${measured.widthPx} x ${measured.heightPx} px | JPG | quality ${quality}` +
-        (paddedBytes > 0 ? ` | padded by ${(paddedBytes / 1000).toFixed(1)} KB to reach the minimum` : '')
-      if (problems.length > 0) {
-        setResultLine(`${line} | NOT VALID: ${problems.join('; ')}`)
-      } else {
-        setResultLine(line)
-        // copy into a fresh buffer: Blob does not accept a view over a shared one
-        setDownload(URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/jpeg' })))
-      }
+      drawMask(mask, image.width, image.height)
+      showResult(final, exported, spec)
     } catch (error) {
       setInfo(`Failed: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -174,6 +232,20 @@ function App() {
   return (
     <main className="mx-auto min-h-screen max-w-xl bg-white p-6 text-neutral-900">
       <h1 className="text-2xl font-semibold">Formify</h1>
+      <div className="mt-4 flex gap-4 text-sm">
+        {KINDS.map(({ value, label }) => (
+          <label key={value} className="flex items-center gap-2">
+            <input
+              id={`kind-${value}`}
+              type="radio"
+              name="kind"
+              checked={kind === value}
+              onChange={() => onKind(value)}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
       <SpecForm fields={fields} resolved={resolved} onChange={setFields} />
       <input
         id="photo"
@@ -182,22 +254,24 @@ function App() {
         accept="image/*"
         onChange={(e) => onPick(e.target.files?.[0])}
       />
-      <label className="mt-3 flex items-center gap-2 text-sm">
-        <input
-          id="fine-edges"
-          type="checkbox"
-          checked={quality === 'fine'}
-          onChange={(e) => setQuality(e.target.checked ? 'fine' : 'fast')}
-        />
-        Finer hair edges (downloads a 26 MB model, slower)
-      </label>
+      {kind === 'photo' && (
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input
+            id="fine-edges"
+            type="checkbox"
+            checked={quality === 'fine'}
+            onChange={(e) => setQuality(e.target.checked ? 'fine' : 'fast')}
+          />
+          Finer hair edges (downloads a 26 MB model, slower)
+        </label>
+      )}
       <button
         id="create"
         className="mt-3 rounded bg-neutral-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
         disabled={!preview || !resolved.ok}
         onClick={onCreate}
       >
-        Create photo
+        Create {kind}
       </button>
       {preview && (
         <button
@@ -244,7 +318,7 @@ function App() {
         <a
           className="mt-3 inline-block rounded bg-blue-600 px-4 py-2 font-medium text-white"
           href={download}
-          download="formify-photo.jpg"
+          download={`formify-${kind}.jpg`}
         >
           Download
         </a>
