@@ -157,6 +157,11 @@ const QUESTIONS = [
       'The first photo downloads about 13 MB of models. Your browser keeps them, so later photos start at once. Signatures need no models.',
   },
   {
+    ask: 'Does it work without internet?',
+    answer:
+      'Yes, after the first photo. Your browser keeps the app and its models, so later visits download nothing and the page opens and works with no connection.',
+  },
+  {
     ask: 'What kind of photo works best?',
     answer:
       'A recent front-facing photo in even light, with your whole head and the top of your shoulders in view and nobody else close to you. For a signature, dark ink on light paper.',
