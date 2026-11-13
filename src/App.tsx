@@ -24,6 +24,8 @@ import { processSignature } from './signature/process'
 import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from './spec/fields'
 import { measurePicture, type Measured } from './spec/estimate'
 import { badFields, cropCaution, resolveChecked, suggest } from './spec/feasibility'
+import { PortalPicker } from './PortalPicker'
+import { chosenPortal } from './spec/portals'
 import { SpecForm } from './SpecForm'
 import { guessTurns, rotateFile } from './upright'
 
@@ -115,6 +117,7 @@ const CONFETTI = Array.from({ length: 28 }, (_, i) => ({
 }))
 
 const STORE = 'formify-fields'
+const PORTAL_STORE = 'formify-portal'
 
 const isFields = (value: unknown): value is SpecFields =>
   typeof value === 'object' &&
@@ -308,6 +311,23 @@ function App() {
   }, [busy])
   const fields = allFields[kind]
   const setFields = (next: SpecFields) => setAllFields({ ...allFields, [kind]: next })
+  // the exam chosen from the list; it stops counting once a detail is changed by hand
+  const [portalId, setPortalId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(PORTAL_STORE)
+    } catch {
+      return null
+    }
+  })
+  useEffect(() => {
+    try {
+      if (portalId) localStorage.setItem(PORTAL_STORE, portalId)
+      else localStorage.removeItem(PORTAL_STORE)
+    } catch {
+      // storage refused: the choice then lasts until the page is closed
+    }
+  }, [portalId])
+  const portal = chosenPortal(portalId, allFields)
   const [preview, setPreview] = useState<string | null>(null)
   // the user's own crop, with the shape it was made for; null means the starting crop
   const [custom, setCustom] = useState<{ aspect?: number; region: Region } | null>(null)
@@ -952,6 +972,19 @@ function App() {
                 !preview && <p className="text-soft text-center text-xs">Add a photo first.</p>
               )}
             </div>
+            <PortalPicker
+              portal={portal}
+              kind={kind}
+              // an exam sets the photo's and the signature's details together
+              onChoose={(chosen) => {
+                setPortalId(chosen.id)
+                // a portal with no photo to upload leaves the photo's details as they are
+                setAllFields({
+                  photo: chosen.photo?.fields ?? allFields.photo,
+                  signature: chosen.signature.fields,
+                })
+              }}
+            />
             <SpecForm
               kind={kind}
               fields={fields}
