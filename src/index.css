@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/plus-jakarta-sans';
+@import '@fontsource-variable/caveat';
 
 @theme {
   --font-sans: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
@@ -195,6 +196,184 @@ body {
     border-radius: 2px;
     opacity: 0;
     animation: nm-fall 1700ms ease-in forwards;
+  }
+
+  /*
+   * The counter's flip cards. A card is two halves, each showing half of a digit: the
+   * digit is drawn at the card's full height inside a box half as tall, and in the bottom
+   * half it is pulled up by that half so its lower part shows.
+   */
+  .fc-digit {
+    --fc-height: 2.125rem;
+    position: relative;
+    display: inline-block;
+    width: 1.5rem;
+    height: var(--fc-height);
+    font-size: 1.25rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: var(--fc-height);
+    text-align: center;
+    color: var(--ink);
+    /* depth, so a half folding towards the viewer looks as if it does */
+    perspective: 12rem;
+  }
+
+  .fc-half {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    background: var(--btn);
+    border: 1px solid var(--line);
+    backface-visibility: hidden;
+  }
+
+  .fc-half > span {
+    display: block;
+    height: var(--fc-height);
+  }
+
+  .fc-top {
+    top: 0;
+    border-bottom: none;
+    border-radius: 0.375rem 0.375rem 0 0;
+  }
+
+  .fc-bottom {
+    bottom: 0;
+    /* the fold across the middle of the card */
+    border-top: 1px solid var(--shadow-dark);
+    border-radius: 0 0 0.375rem 0.375rem;
+  }
+
+  .fc-bottom > span {
+    margin-top: calc(var(--fc-height) / -2);
+  }
+
+  /* the old top half folds down, hinged on the fold */
+  .fc-leaf-top {
+    z-index: 2;
+    transform-origin: bottom;
+    animation: fc-fold-away 260ms ease-in both;
+  }
+
+  /* then the new bottom half comes down into place, hinged on the same fold */
+  .fc-leaf-bottom {
+    z-index: 2;
+    transform-origin: top;
+    animation: fc-fold-in 260ms ease-out 260ms both;
+  }
+
+  .fc-separator {
+    font-size: 1.125rem;
+    font-weight: 800;
+    line-height: 2.125rem;
+  }
+
+  /*
+   * The signed credit: handwriting, in ink that drifts between purple and yellow, revealed
+   * from left to right as if being written, then underlined with a stroke that draws itself.
+   */
+  .nm-signed {
+    position: relative;
+    display: inline-block;
+    width: fit-content;
+    padding: 0 0.25rem 0.5rem 0;
+    font-family: 'Caveat Variable', cursive;
+    font-size: 1.875rem;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    transform-origin: left center;
+    transition: transform 200ms ease;
+  }
+
+  .nm-signed:hover {
+    transform: rotate(-3deg) scale(1.06);
+  }
+
+  .nm-signed-name {
+    display: inline-block;
+    background: linear-gradient(
+        100deg,
+        var(--primary-dark),
+        var(--field-dark) 30%,
+        var(--primary-strong) 55%,
+        var(--field-dark) 80%,
+        var(--primary-dark)
+      )
+      0 0 / 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation:
+      nm-write 1300ms cubic-bezier(0.6, 0, 0.3, 1) both,
+      nm-ink 6s linear infinite;
+  }
+
+  .nm-flourish {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 0.75rem;
+    overflow: visible;
+  }
+
+  .nm-flourish path {
+    fill: none;
+    stroke: var(--primary-strong);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    /* longer than the stroke, so the whole of it starts out hidden */
+    stroke-dasharray: 220;
+    stroke-dashoffset: 220;
+    animation: nm-underline 600ms ease-out 1200ms forwards;
+  }
+
+  /* the pen: it keeps pace with the edge of the writing, then lifts off the page */
+  .nm-pen {
+    position: absolute;
+    top: 0.125rem;
+    left: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+    animation: nm-pen 1900ms cubic-bezier(0.6, 0, 0.3, 1) both;
+  }
+
+  /*
+   * The rubber stamp: it comes down from above, larger and turned, lands with a bounce, and
+   * leaves its mark a little off square, as a hand-pressed stamp does.
+   */
+  .nm-stamp {
+    position: absolute;
+    top: -0.375rem;
+    right: -1.5rem;
+    padding: 0.125rem 0.4375rem;
+    border: 2px solid currentColor;
+    border-radius: 0.375rem;
+    /* a second, thinner line inside the first, like the rim of a stamp */
+    outline: 1px solid currentColor;
+    outline-offset: -4px;
+    color: var(--danger);
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    line-height: 1.5;
+    text-transform: uppercase;
+    opacity: 0.9;
+    pointer-events: none;
+    transform: rotate(-11deg);
+    animation: nm-thump 380ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
   }
 
   /* a panel that stands out of the page */
@@ -541,6 +720,64 @@ body {
   }
 }
 
+@keyframes fc-fold-away {
+  to {
+    transform: rotateX(-90deg);
+  }
+}
+
+@keyframes fc-fold-in {
+  from {
+    transform: rotateX(90deg);
+  }
+}
+
+@keyframes nm-write {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 -10% 0 0);
+  }
+}
+
+@keyframes nm-ink {
+  to {
+    background-position: 300% 0;
+  }
+}
+
+@keyframes nm-pen {
+  0% {
+    left: 0;
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+  68% {
+    left: calc(100% - 0.5rem);
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+  100% {
+    left: calc(100% + 0.25rem);
+    opacity: 0;
+    transform: translateY(-0.5rem) rotate(-20deg);
+  }
+}
+
+@keyframes nm-thump {
+  from {
+    opacity: 0;
+    transform: translateY(-1rem) rotate(-28deg) scale(2.4);
+  }
+}
+
+@keyframes nm-underline {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 @keyframes nm-fill {
   from {
     transform: scaleX(0);
@@ -615,5 +852,29 @@ body {
   }
   .nm-confetti {
     display: none;
+  }
+  /* the signature is simply there: written, underlined, in still ink */
+  .nm-signed-name {
+    animation: none;
+  }
+  .nm-flourish path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  /* no pen and no thump: the stamp is simply there */
+  .nm-pen {
+    display: none;
+  }
+  .nm-stamp {
+    animation: none;
+  }
+  .nm-signed:hover {
+    transform: none;
+  }
+  /* the card still has to finish its turn to show the new digit, so it does so at once */
+  .fc-leaf-top,
+  .fc-leaf-bottom {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
   }
 }

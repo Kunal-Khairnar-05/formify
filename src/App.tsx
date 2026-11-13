@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { fetchTotals, reportMade } from './counter/client'
 import type { Totals } from './counter/server'
 import { CropBox } from './CropBox'
+import { FlipCounter } from './FlipCounter'
 import { fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
 import {
   AlertIcon,
@@ -248,6 +249,65 @@ function Confetti() {
         />
       ))}
     </div>
+  )
+}
+
+const PROFILE = 'https://github.com/Kunal-Khairnar-05'
+// how long the stamp is given to land before a tap moves on to the profile
+const STAMP_MS = 700
+
+/**
+ * The developer's credit, signed: a pen writes the name out in handwriting, in ink that
+ * shifts between the app's purple and yellow, and underlines it with a flourish. Pointing
+ * at it brings a rubber stamp down on it.
+ *
+ * A click opens the profile at once, so nothing is played on a click: the new tab would
+ * hide it. A phone has no pointer to hover with, so there the first tap brings the stamp
+ * down and the profile opens a moment later.
+ */
+function SignedCredit() {
+  const [stamped, setStamped] = useState(false)
+
+  function onTap(event: React.MouseEvent<HTMLAnchorElement>) {
+    // a device that can hover has already shown the stamp: let the link do its work
+    if (!window.matchMedia('(hover: none)').matches) return
+    event.preventDefault()
+    setStamped(true)
+    setTimeout(() => {
+      // still within the moment a browser allows a tap to open a tab; if it refuses, go there in this one
+      if (!window.open(PROFILE, '_blank', 'noopener')) window.location.href = PROFILE
+      setStamped(false)
+    }, STAMP_MS)
+  }
+
+  return (
+    <p
+      id="sidebar-credit"
+      className="flex w-fit flex-col px-1"
+      onMouseEnter={() => setStamped(true)}
+      onMouseLeave={() => setStamped(false)}
+    >
+      <span id="version" className="text-soft mb-2 text-xs font-bold tracking-wide">
+        v{__APP_VERSION__}
+      </span>
+      <span className="text-soft text-xs font-semibold">Developed by</span>
+      <a className="nm-signed" href={PROFILE} target="_blank" rel="noreferrer" onClick={onTap}>
+        <span className="nm-signed-name">Kunal Khairnar</span>
+        {/* the pen that does the writing: it crosses with the name, then lifts away */}
+        <svg className="nm-pen" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 20l1.2-4.5L16.5 4.200a1.7 1.7 0 0 1 2.400 0l.9.9a1.7 1.7 0 0 1 0 2.400L8.5 18.800 4 20z" />
+          <path d="M14.5 6.200l3.300 3.300" />
+        </svg>
+        <svg className="nm-flourish" viewBox="0 0 200 14" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M3 8c30-7 62 6 96 1s60-8 98-1" />
+        </svg>
+        {stamped && (
+          <span id="stamp" className="nm-stamp" aria-hidden="true">
+            Handcoded
+          </span>
+        )}
+      </a>
+    </p>
   )
 }
 
@@ -809,6 +869,9 @@ function App() {
               </p>
             </div>
           )}
+          {sidebar && (
+            <SignedCredit />
+          )}
           <button
             id="theme"
             className={`nm-btn ${sidebar ? 'justify-start' : 'nm-btn-icon self-center'}`}
@@ -840,10 +903,10 @@ function App() {
             <p className="text-xl leading-tight font-extrabold tracking-tight">Formify</p>
             <h1 className="text-soft truncate text-sm font-semibold">{current.title}</h1>
           </div>
-          <p className="card hidden flex-none items-center gap-2 !rounded-full px-3 py-1.5 text-xs font-bold md:flex">
-            <LockIcon size={16} />
-            On-device
-          </p>
+          {/* how many pictures everyone has made; each new one turns the cards over */}
+          {made && made.total > 0 && (
+            <FlipCounter value={made.total} label={made.total === 1 ? 'picture made' : 'pictures made'} />
+          )}
         </header>
 
         {/* on a phone: picture, form, result, in that order; on a wide screen the form sits on the right */}
@@ -1200,35 +1263,7 @@ function App() {
         </main>
 
         <footer className="text-soft flex flex-wrap items-center justify-between gap-2 px-4 pb-6 text-xs sm:px-8">
-          <div className="flex flex-col gap-1">
-            {made && made.total > 0 && (
-              <p id="made-count" className="font-semibold text-[var(--ink)]">
-                {made.total.toLocaleString('en-IN')} {made.total === 1 ? 'picture' : 'pictures'} made with
-                Formify so far
-              </p>
-            )}
-            <p>Check the result against your portal's own instructions before you upload.</p>
-          </div>
-          <p id="credit">
-            Developed by{' '}
-            <a
-              className="font-semibold text-[var(--ink)] underline underline-offset-2"
-              href="https://github.com/Kunal-Khairnar-05"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Kunal Khairnar
-            </a>
-            {' · '}
-            <a
-              className="font-semibold underline underline-offset-2"
-              href="https://github.com/Kunal-Khairnar-05/formify"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Source on GitHub
-            </a>
-          </p>
+          <p>Check the result against your portal's own instructions before you upload.</p>
         </footer>
       </div>
     </div>
