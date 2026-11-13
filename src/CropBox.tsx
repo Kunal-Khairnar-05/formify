@@ -53,12 +53,12 @@ export function CropBox({ src, region, aspect, onChange, onSize }: Props) {
   })
 
   return (
-    <div ref={frame} className="relative mt-3 touch-none overflow-hidden select-none">
+    <div ref={frame} className="relative mx-auto w-fit max-w-full touch-none overflow-hidden rounded-xl select-none">
       <img
         id="crop-photo"
         src={src}
         alt="Your photo"
-        className="block h-auto w-full"
+        className="block h-auto max-h-[70vh] w-auto max-w-full"
         draggable={false}
         onLoad={(event) => onSize(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
       />

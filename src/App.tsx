@@ -30,12 +30,44 @@ const timingText = (timingsMs: Record<string, number>) =>
     .map(([name, ms]) => `${name} ${ms} ms`)
     .join(', ')
 
-// Debug page: shows each pipeline stage as it is built. Replaced by the real UI later.
+type Theme = 'light' | 'dark'
+
+/** The theme the page started with: set on <html> by the script in index.html. */
+const startTheme = (): Theme => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
+
+const icon = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+} as const
+
+const SunIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" strokeWidth="2" {...icon}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </svg>
+)
+
+const MoonIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" strokeWidth="2" {...icon}>
+    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+  </svg>
+)
+
+const UploadIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-8 w-8" strokeWidth="1.75" {...icon}>
+    <path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19h14" />
+  </svg>
+)
+
 function App() {
   const sourceRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
   const finalRef = useRef<HTMLCanvasElement>(null)
   const [kind, setKind] = useState<Kind>('photo')
+  const [theme, setTheme] = useState<Theme>(startTheme)
   const [info, setInfo] = useState('Choose a photo.')
   const [resultLine, setResultLine] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
@@ -72,6 +104,17 @@ function App() {
   // a new output shape, or switching the lock, starts the crop again
   const region = custom && custom.aspect === aspect ? custom.region : startRegion
   const setRegion = (next: Region) => setCustom({ aspect, region: next })
+
+  function switchTheme() {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try {
+      localStorage.setItem('formify-theme', next)
+    } catch {
+      // private windows may refuse storage; the theme then lasts until the page is closed
+    }
+    setTheme(next)
+  }
 
   function clearResult() {
     setResultLine('')
@@ -240,111 +283,178 @@ function App() {
     }
   }
 
+  const checkbox = 'flex items-center gap-2 text-sm'
+
   return (
-    <main className="mx-auto min-h-screen max-w-xl bg-white p-6 text-neutral-900">
-      <h1 className="text-2xl font-semibold">Formify</h1>
-      <div className="mt-4 flex gap-4 text-sm">
-        {KINDS.map(({ value, label }) => (
-          <label key={value} className="flex items-center gap-2">
-            <input
-              id={`kind-${value}`}
-              type="radio"
-              name="kind"
-              checked={kind === value}
-              onChange={() => onKind(value)}
-            />
-            {label}
-          </label>
-        ))}
-      </div>
-      <SpecForm fields={fields} resolved={resolved} onChange={setFields} />
-      <input
-        id="photo"
-        className="mt-4 block"
-        type="file"
-        accept="image/*"
-        onChange={(e) => onPick(e.target.files?.[0])}
-      />
-      {kind === 'photo' && (
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input
-            id="fine-edges"
-            type="checkbox"
-            checked={quality === 'fine'}
-            onChange={(e) => setQuality(e.target.checked ? 'fine' : 'fast')}
-          />
-          Finer hair edges (downloads a 26 MB model, slower)
-        </label>
-      )}
-      <button
-        id="create"
-        className="mt-3 rounded bg-neutral-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-        disabled={!preview || !resolved.ok}
-        onClick={() => onCreate()}
-      >
-        Create {kind}
-      </button>
-      {kind === 'signature' && signatureTurns !== null && (
-        <button
-          id="rotate"
-          className="mt-3 ml-3 rounded border border-neutral-400 px-3 py-2 text-sm"
-          onClick={() => onCreate((signatureTurns + 1) % 4)}
-        >
-          Rotate
-        </button>
-      )}
-      {preview && (
-        <button
-          id="crop-reset"
-          className="mt-3 ml-3 text-sm underline"
-          onClick={() => setCustom(null)}
-        >
-          Reset crop
-        </button>
-      )}
-      {preview && kind === 'photo' && (
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input
-            id="crop-lock"
-            type="checkbox"
-            checked={lockShape}
-            onChange={(e) => {
-              setLockShape(e.target.checked)
-              // switching to free-form keeps the box where it is
-              if (!e.target.checked) setCustom({ aspect: undefined, region })
+    <main className="mx-auto min-h-screen max-w-6xl p-4 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="flex items-center gap-3 text-xl font-semibold">
+          <span className="nm-raised flex h-10 w-10 items-center justify-center !rounded-xl">
+            <img src="/favicon.svg" alt="" className="h-6 w-6" />
+          </span>
+          Formify
+        </h1>
+        <div className="flex w-full items-center gap-3 sm:w-auto">
+          <div className="nm-inset flex flex-1 gap-1 p-1 sm:w-64 sm:flex-none">
+            {KINDS.map(({ value, label }) => (
+              <label key={value} className="nm-segment">
+                <input
+                  id={`kind-${value}`}
+                  className="sr-only"
+                  type="radio"
+                  name="kind"
+                  checked={kind === value}
+                  onChange={() => onKind(value)}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <button
+            id="theme"
+            className="nm-btn !px-2.5"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={switchTheme}
+          >
+            {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+          </button>
+        </div>
+      </header>
+
+      {/* on a phone: picture, form, result, in that order; on a wide screen the form sits on the right */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <section aria-label="Picture" className="flex min-w-0 flex-col gap-4">
+          <div
+            className="nm-inset nm-drop p-3"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault()
+              onPick(e.dataTransfer.files[0])
             }}
+          >
+            {preview ? (
+              <CropBox
+                src={preview}
+                region={region}
+                aspect={aspect}
+                onChange={setRegion}
+                onSize={(width, height) => setPhotoSize({ width, height })}
+              />
+            ) : (
+              <label
+                htmlFor="photo"
+                className="flex min-h-56 cursor-pointer flex-col items-center justify-center gap-2 text-center sm:min-h-80"
+              >
+                <UploadIcon />
+                <span className="font-semibold">
+                  {kind === 'photo' ? 'Choose a photo' : 'Choose a photo of your signature'}
+                </span>
+                <span className="text-sm">or drop it here, then drag the corners to crop</span>
+              </label>
+            )}
+            <input
+              id="photo"
+              className="sr-only"
+              type="file"
+              accept="image/*"
+              onChange={(e) => onPick(e.target.files?.[0])}
+            />
+          </div>
+          {preview && (
+            <div className="flex flex-wrap items-center gap-3">
+              <label htmlFor="photo" className="nm-btn">
+                Change photo
+              </label>
+              <button id="crop-reset" className="nm-btn" onClick={() => setCustom(null)}>
+                Reset crop
+              </button>
+              {kind === 'photo' && (
+                <label className={checkbox}>
+                  <input
+                    id="crop-lock"
+                    className="nm-check"
+                    type="checkbox"
+                    checked={lockShape}
+                    onChange={(e) => {
+                      setLockShape(e.target.checked)
+                      // switching to free-form keeps the box where it is
+                      if (!e.target.checked) setCustom({ aspect: undefined, region })
+                    }}
+                  />
+                  Keep the crop in the shape of the output
+                </label>
+              )}
+            </div>
+          )}
+        </section>
+
+        <aside className="nm-raised flex flex-col gap-4 p-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
+          <SpecForm fields={fields} resolved={resolved} onChange={setFields} />
+          {kind === 'photo' && (
+            <label className={checkbox}>
+              <input
+                id="fine-edges"
+                className="nm-check"
+                type="checkbox"
+                checked={quality === 'fine'}
+                onChange={(e) => setQuality(e.target.checked ? 'fine' : 'fast')}
+              />
+              Finer hair edges (downloads a 26 MB model, slower)
+            </label>
+          )}
+          <button
+            id="create"
+            className="nm-btn nm-btn-primary w-full"
+            disabled={!preview || !resolved.ok}
+            onClick={() => onCreate()}
+          >
+            Create {kind}
+          </button>
+        </aside>
+
+        <section aria-label="Result" className="nm-raised flex min-w-0 flex-col gap-3 p-4">
+          <h2 className="font-semibold">Result</h2>
+          <p id="info" className="text-sm">
+            {info}
+          </p>
+          <canvas
+            ref={finalRef}
+            className={resultLine ? 'h-auto max-w-full self-start rounded-lg' : 'hidden'}
           />
-          Keep the crop in the shape of the output
-        </label>
-      )}
-      {preview && (
-        <CropBox
-          src={preview}
-          region={region}
-          aspect={aspect}
-          onChange={setRegion}
-          onSize={(width, height) => setPhotoSize({ width, height })}
-        />
-      )}
-      <p className="mt-3 text-sm text-neutral-600">{info}</p>
-      <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
-      {resultLine && <p className="mt-3 font-mono text-sm">{resultLine}</p>}
-      {warnings.map((warning) => (
-        <p key={warning} className="mt-2 rounded bg-amber-100 px-3 py-2 text-sm text-amber-900">
-          {warning}
-        </p>
-      ))}
-      {download && (
-        <a
-          className="mt-3 inline-block rounded bg-blue-600 px-4 py-2 font-medium text-white"
-          href={download}
-          download={`formify-${kind}.jpg`}
-        >
-          Download
-        </a>
-      )}
-      <canvas ref={sourceRef} className="mt-6 h-auto max-w-full border border-neutral-300" />
-      <canvas ref={maskRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
+          {resultLine && <p className="text-sm font-medium">{resultLine}</p>}
+          {warnings.map((warning) => (
+            <p key={warning} className="nm-note px-3 py-2 text-sm">
+              {warning}
+            </p>
+          ))}
+          <div className="flex flex-wrap gap-3 empty:hidden">
+            {download && (
+              <a
+                className="nm-btn nm-btn-primary"
+                href={download}
+                download={`formify-${kind}.jpg`}
+              >
+                Download
+              </a>
+            )}
+            {kind === 'signature' && signatureTurns !== null && (
+              <button
+                id="rotate"
+                className="nm-btn"
+                onClick={() => onCreate((signatureTurns + 1) % 4)}
+              >
+                Rotate
+              </button>
+            )}
+          </div>
+          {/* how the result was reached: what was found in the photo, and the cut-out */}
+          <details className={resultLine ? 'text-sm' : 'hidden'}>
+            <summary className="cursor-pointer font-medium">Show details</summary>
+            <canvas ref={sourceRef} className="mt-3 h-auto max-w-full rounded-lg" />
+            <canvas ref={maskRef} className="mt-3 h-auto max-w-full rounded-lg" />
+          </details>
+        </section>
+      </div>
     </main>
   )
 }
