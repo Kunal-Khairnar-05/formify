@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import { CropBox } from './CropBox'
+import { FULL, isFull, type Region } from './crop/region'
 import { processPhoto, type Quality } from './pipeline/process'
 import type { Spec } from './pipeline/types'
 import { DEFAULT_FIELDS, parseFields, type SpecFields } from './spec/fields'
@@ -24,32 +26,52 @@ function App() {
   const [download, setDownload] = useState<string | null>(null)
   const [quality, setQuality] = useState<Quality>('fast')
   const [fields, setFields] = useState<SpecFields>(DEFAULT_FIELDS)
-  const [hasFile, setHasFile] = useState(false)
+  const [preview, setPreview] = useState<string | null>(null)
+  const [region, setRegion] = useState<Region>(FULL)
   const lastFile = useRef<File | undefined>(undefined)
   const resolved = resolveSpec(parseFields(fields))
 
-  async function onFile(file: File | undefined, mode: Quality) {
-    if (!file) return
-    lastFile.current = file
-    setHasFile(true)
-    if (!resolved.ok) {
-      setInfo('Fix the form details above first.')
-      return
-    }
-    const spec = resolved.spec
+  function clearResult() {
     setResultLine('')
     setWarnings([])
     setDownload((previous) => {
       if (previous) URL.revokeObjectURL(previous)
       return null
     })
-    for (const ref of [maskRef, finalRef]) {
+    for (const ref of [sourceRef, maskRef, finalRef]) {
       ref.current!.width = 0
       ref.current!.height = 0
     }
+  }
+
+  // choosing a photo only shows it for cropping; nothing is processed until Create is pressed
+  function onPick(file: File | undefined) {
+    if (!file) return
+    lastFile.current = file
+    setPreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous)
+      return URL.createObjectURL(file)
+    })
+    setRegion(FULL)
+    clearResult()
+    setInfo('Drag the corners to crop if you need to, then press Create photo.')
+  }
+
+  async function onCreate() {
+    const file = lastFile.current
+    if (!file || !resolved.ok) return
+    const spec = resolved.spec
+    const mode = quality
+    setInfo('Working...')
+    clearResult()
 
     try {
-      const { image, turns, faceCount, stages, timingsMs } = await processPhoto(file, spec, mode)
+      const { image, turns, faceCount, stages, timingsMs } = await processPhoto(
+        file,
+        spec,
+        mode,
+        isFull(region) ? undefined : region,
+      )
 
       const source = sourceRef.current!
       source.width = image.width
@@ -139,29 +161,31 @@ function App() {
         className="mt-4 block"
         type="file"
         accept="image/*"
-        onChange={(e) => onFile(e.target.files?.[0], quality)}
+        onChange={(e) => onPick(e.target.files?.[0])}
       />
       <label className="mt-3 flex items-center gap-2 text-sm">
         <input
           id="fine-edges"
           type="checkbox"
           checked={quality === 'fine'}
-          onChange={(e) => {
-            const next: Quality = e.target.checked ? 'fine' : 'fast'
-            setQuality(next)
-            onFile(lastFile.current, next)
-          }}
+          onChange={(e) => setQuality(e.target.checked ? 'fine' : 'fast')}
         />
         Finer hair edges (downloads a 26 MB model, slower)
       </label>
       <button
         id="create"
         className="mt-3 rounded bg-neutral-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-        disabled={!hasFile || !resolved.ok}
-        onClick={() => onFile(lastFile.current, quality)}
+        disabled={!preview || !resolved.ok}
+        onClick={onCreate}
       >
-        Create again with these details
+        Create photo
       </button>
+      {preview && !isFull(region) && (
+        <button id="crop-reset" className="mt-3 ml-3 text-sm underline" onClick={() => setRegion(FULL)}>
+          Reset crop
+        </button>
+      )}
+      {preview && <CropBox src={preview} region={region} onChange={setRegion} />}
       <p className="mt-3 text-sm text-neutral-600">{info}</p>
       <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
       {resultLine && <p className="mt-3 font-mono text-sm">{resultLine}</p>}
