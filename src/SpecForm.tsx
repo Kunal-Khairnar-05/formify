@@ -28,9 +28,9 @@ const PRESETS: Record<'photo' | 'signature', { label: string; fields: Partial<Sp
 }
 
 const FILE_TYPES: { value: Extension; label: string; hint: string }[] = [
-  { value: 'jpg', label: 'JPG', hint: 'The usual choice. File ends in .jpg' },
-  { value: 'jpeg', label: 'JPEG', hint: 'The same format as JPG. File ends in .jpeg' },
-  { value: 'png', label: 'PNG', hint: 'Keeps every pixel exactly, so files are larger. File ends in .png' },
+  { value: 'jpg', label: 'JPG', hint: 'What most forms ask for. The file ends in .jpg' },
+  { value: 'jpeg', label: 'JPEG', hint: 'The same as JPG, for portals that insist on .jpeg' },
+  { value: 'png', label: 'PNG', hint: 'Only if the form asks for PNG: much larger files. The file ends in .png' },
 ]
 
 const BACKGROUNDS = [
@@ -225,11 +225,11 @@ export function SpecForm({ kind, fields, resolved, suggestions, bad, onChange }:
       </div>
 
       <div className="flex flex-col gap-3">
-        <p className={group}>FILE TYPE</p>
+        <p className={group}>SAVE THE RESULT AS</p>
         <div
           className={`flex w-fit flex-wrap gap-2 rounded-full ${bad.includes('format') ? 'nm-field-bad' : ''}`}
           role="group"
-          aria-label="File type"
+          aria-label="File type of the result"
         >
           {FILE_TYPES.map((type) => (
             <button

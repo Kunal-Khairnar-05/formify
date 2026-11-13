@@ -17,6 +17,9 @@
   /* a hairline on the lit edge of raised shapes: it is what keeps soft shadows looking crisp */
   --edge: rgb(255 255 255 / 0.7);
   --line: rgb(40 30 90 / 0.12);
+  /* what cards and buttons are made of: the page itself in light mode */
+  --card: var(--bg);
+  --btn: var(--bg);
   --ink: #0e0e10;
   --ink-soft: #3d3a4d;
   /* text inside yellow fields and purple buttons, the same in both themes */
@@ -31,18 +34,29 @@
   color-scheme: light;
 }
 
+/*
+ * Dark: near-black and matte. On black, a raised shape cannot be drawn with a light shadow
+ * alone, because there is no lighter page for it to fall on. So buttons and cards sit one
+ * step lighter than the page, with a hairline on their edge, and the shadows are kept
+ * short and dark. The yellow and the purple are toned down so they do not glare.
+ */
 :root[data-theme='dark'] {
-  --bg: #24213a;
-  --shadow-light: #322e50;
-  --shadow-dark: #151326;
-  --edge: rgb(255 255 255 / 0.05);
-  --line: rgb(255 255 255 / 0.09);
-  --ink: #f4f2ff;
-  --ink-soft: #bcb6d9;
-  --field: #e6ca6a;
-  --field-dark: #b99a3a;
+  --bg: #0f0f11;
+  --card: #151517;
+  --btn: #1c1c1f;
+  --shadow-light: #1a1a1d;
+  --shadow-dark: #050506;
+  --edge: rgb(255 255 255 / 0.07);
+  --line: rgb(255 255 255 / 0.08);
+  --ink: #f1f1f2;
+  --ink-soft: #a1a1aa;
+  --primary: #9d90ea;
+  --primary-strong: #8577dd;
+  --primary-dark: #6558c4;
+  --field: #cfae45;
+  --field-dark: #a88a2c;
   --good: #7fd6a8;
-  --danger: #f09595;
+  --danger: #f0908f;
   color-scheme: dark;
 }
 
@@ -65,7 +79,7 @@ body {
    * the controls.
    */
   .card {
-    background: var(--bg);
+    background: var(--card);
     border: 1px solid var(--line);
     border-radius: 1rem;
   }
@@ -120,7 +134,7 @@ body {
     padding: 0.5rem 1.125rem;
     border: 1px solid var(--edge);
     border-radius: 0.875rem;
-    background: var(--bg);
+    background: var(--btn);
     color: var(--ink);
     font-size: 0.875rem;
     font-weight: 650;
