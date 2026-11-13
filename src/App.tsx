@@ -660,8 +660,7 @@ function App() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* stays at the top while the page scrolls, so Create is always within reach */}
-        <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-[var(--line)] bg-[var(--bg)] px-4 py-3 sm:px-8">
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-[var(--line)] px-4 py-3 sm:px-8">
           {/* on a phone the sidebar is off the screen, so its own button cannot open it */}
           <button
             id="sidebar-open"
@@ -683,24 +682,6 @@ function App() {
             <LockIcon size={16} />
             On-device
           </p>
-          <div className="flex w-full flex-col gap-1 sm:w-auto sm:items-end">
-            <button
-              id="create"
-              className="nm-btn nm-btn-primary w-full sm:w-auto sm:min-w-44"
-              disabled={!preview || !resolved.ok || busy || orienting || weighing}
-              onClick={() => onCreate()}
-            >
-              {busy ? <span className="nm-spinner" /> : <SparkIcon />}
-              {busy ? 'Working' : weighing || orienting ? 'Checking your photo' : `Create ${kind}`}
-            </button>
-            {!resolved.ok ? (
-              <p id="create-blocked" className="nm-danger text-xs font-semibold">
-                Fix the boxes marked in red to continue.
-              </p>
-            ) : (
-              !preview && <p className="text-soft text-xs">Add a photo first.</p>
-            )}
-          </div>
         </header>
 
         {/* on a phone: picture, form, result, in that order; on a wide screen the form sits on the right */}
@@ -821,6 +802,25 @@ function App() {
             className="card flex flex-col gap-5 p-5 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start"
           >
             <Step number={2} title="What the form asks for" hint="Copy these from the portal." />
+            {/* at the top of the form, so it is in view without scrolling past every box */}
+            <div className="flex flex-col gap-1.5">
+              <button
+                id="create"
+                className="nm-btn nm-btn-primary w-full !min-h-12 !text-base"
+                disabled={!preview || !resolved.ok || busy || orienting || weighing}
+                onClick={() => onCreate()}
+              >
+                {busy ? <span className="nm-spinner" /> : <SparkIcon />}
+                {busy ? 'Working' : weighing || orienting ? 'Checking your photo' : `Create ${kind}`}
+              </button>
+              {!resolved.ok ? (
+                <p id="create-blocked" className="nm-danger text-center text-xs font-semibold">
+                  Fix the boxes marked in red to continue.
+                </p>
+              ) : (
+                !preview && <p className="text-soft text-center text-xs">Add a photo first.</p>
+              )}
+            </div>
             <SpecForm
               kind={kind}
               fields={fields}
