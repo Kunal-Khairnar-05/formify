@@ -24,6 +24,16 @@ declare const self: DedicatedWorkerGlobalScope
   'return import(url)',
 ) as (url: string) => Promise<unknown>
 
+// The same library looks for `importScripts` to tell a worker from a page, and reaches for
+// `document` when there is none. A module worker need not have one, so it is given one
+// that fails the way a module worker's does, which sends the library on to `self.import`.
+const globals = self as unknown as { importScripts?: (...urls: string[]) => void }
+if (typeof globals.importScripts !== 'function') {
+  globals.importScripts = () => {
+    throw new TypeError('importScripts is not available in a module worker')
+  }
+}
+
 /*
  * The model runtime speeds itself up with threads, which are workers it starts from inside
  * this one. Where one of those will not start (some hosts and some browsers do not allow
