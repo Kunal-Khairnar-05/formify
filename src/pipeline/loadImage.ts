@@ -1,5 +1,5 @@
 /** Step 1: file -> upright bitmap, downscaled to a working size. */
-export async function loadImage(file: Blob, maxEdge = 1536): Promise<ImageBitmap> {
+export async function loadImage(file: Blob | ImageBitmap, maxEdge = 1536): Promise<ImageBitmap> {
   // 'from-image' applies the EXIF rotation, so a sideways phone photo comes out upright
   const full = await createImageBitmap(file, { imageOrientation: 'from-image' })
 
