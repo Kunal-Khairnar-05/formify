@@ -810,6 +810,19 @@ function App() {
               </p>
             </div>
           )}
+          {sidebar && (
+            <p id="sidebar-credit" className="text-soft px-1 text-xs">
+              Developed by{' '}
+              <a
+                className="font-semibold text-[var(--ink)] underline underline-offset-2"
+                href="https://github.com/Kunal-Khairnar-05"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Kunal Khairnar
+              </a>
+            </p>
+          )}
           <button
             id="theme"
             className={`nm-btn ${sidebar ? 'justify-start' : 'nm-btn-icon self-center'}`}
