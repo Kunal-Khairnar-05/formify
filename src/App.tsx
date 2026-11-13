@@ -74,9 +74,43 @@ interface Summary {
   widthPx: number
   heightPx: number
   extension: string
+  /** The file's size and the form's limits, for the meter. */
+  bytes: number
+  minKb?: number
+  maxKb?: number
   /** Extra notes about how the file was made. */
   notes: string[]
 }
+
+// Shown under the real stage while working, one after another. They are only for fun: the
+// line above them always says what is really happening.
+const ASIDES: Record<Kind, string[]> = {
+  photo: [
+    'Asking your hair to stay in frame',
+    'Persuading the background to leave quietly',
+    'Checking that you are, in fact, one person',
+    'Counting kilobytes very carefully',
+    'Making the portal slightly less angry',
+  ],
+  signature: [
+    'Separating ink from paper, politely',
+    'Pretending the ruled lines were never there',
+    'Straightening things out',
+    'Counting kilobytes very carefully',
+  ],
+}
+// how long each of those lines stays up
+const ASIDE_MS = 1800
+
+// pieces of confetti: where each starts, how far it drifts, how it turns, and its colour
+const CONFETTI = Array.from({ length: 28 }, (_, i) => ({
+  left: (i * 37 + 11) % 100,
+  drift: ((i * 53) % 60) - 30,
+  turn: 180 + ((i * 97) % 540),
+  delay: (i * 43) % 400,
+  colour: ['var(--primary-strong)', 'var(--field)', 'var(--good)'][i % 3],
+  wide: i % 2 === 0,
+}))
 
 const STORE = 'formify-fields'
 
@@ -150,13 +184,72 @@ function Step({ number, title, hint }: { number: number; title: string; hint?: s
   )
 }
 
+/**
+ * The file's size as a bar that fills towards the maximum, with a mark at the minimum.
+ * Green with room to spare, yellow in the last tenth, red when outside the limits.
+ */
+function SizeMeter({ bytes, minKb, maxKb }: { bytes: number; minKb?: number; maxKb?: number }) {
+  if (maxKb === undefined) return null
+  const top = maxKb * 1000
+  const floor = minKb === undefined ? 0 : minKb * 1024
+  const share = Math.min(1, bytes / top)
+  const outside = bytes > top || bytes < floor
+  const colour = outside ? 'var(--danger)' : share > 0.9 ? 'var(--field-dark)' : 'var(--good)'
+  return (
+    <div id="size-meter" className="flex flex-col gap-1.5">
+      <div
+        className="nm-meter"
+        role="meter"
+        aria-label="File size against the limit"
+        aria-valuemin={0}
+        aria-valuemax={maxKb}
+        aria-valuenow={Math.round(bytes / 100) / 10}
+      >
+        <div className="nm-meter-fill" style={{ width: `${share * 100}%`, background: colour }} />
+        {minKb !== undefined && floor < top && (
+          <div className="nm-meter-mark" style={{ left: `${(floor / top) * 100}%` }} title={`Minimum ${minKb} KB`} />
+        )}
+      </div>
+      <div className="text-soft flex justify-between text-xs font-medium tabular-nums">
+        <span>{minKb === undefined ? '0 KB' : `min ${minKb} KB`}</span>
+        <span>{Math.round(share * 100)}% of the limit</span>
+        <span>max {maxKb} KB</span>
+      </div>
+    </div>
+  )
+}
+
+/** A short burst of confetti over the result, when the file meets everything the form asks. */
+function Confetti() {
+  return (
+    <div className="nm-confetti" aria-hidden="true">
+      {CONFETTI.map((piece, i) => (
+        <span
+          key={i}
+          style={{
+            left: `${piece.left}%`,
+            width: piece.wide ? '0.5rem' : '0.3rem',
+            background: piece.colour,
+            animationDelay: `${piece.delay}ms`,
+            ['--drift' as string]: `${piece.drift}px`,
+            ['--turn' as string]: `${piece.turn}deg`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 /** The result's checklist: what the form asks for beside what the file has. */
 function Checklist({ checks }: { checks: Check[] }) {
   return (
     <ul className="card divide-y divide-[var(--line)]">
-      {checks.map(({ label, value, wanted, ok }) => (
-        <li key={label} className="flex items-center gap-3 px-3 py-2.5">
-          <span className={ok ? 'nm-good' : 'nm-danger'}>{ok ? <CheckIcon /> : <AlertIcon />}</span>
+      {checks.map(({ label, value, wanted, ok }, i) => (
+        // each line arrives a moment after the one above it
+        <li key={label} className="nm-arrive flex items-center gap-3 px-3 py-2.5" style={{ animationDelay: `${i * 220}ms` }}>
+          <span className={`nm-pop ${ok ? 'nm-good' : 'nm-danger'}`} style={{ animationDelay: `${i * 220 + 120}ms` }}>
+            {ok ? <CheckIcon /> : <AlertIcon />}
+          </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">{label}</p>
             <p className="text-soft text-xs">{wanted}</p>
@@ -172,6 +265,12 @@ function App() {
   const sourceRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
   const finalRef = useRef<HTMLCanvasElement>(null)
+  // the same part of the photo as the result, as it was before: for the comparison slider
+  const beforeRef = useRef<HTMLCanvasElement>(null)
+  // how much of the result is covered by the "before" picture, 0 to 100
+  const [split, setSplit] = useState(50)
+  // which of the playful lines is showing while working
+  const [aside, setAside] = useState(0)
   const [kind, setKind] = useState<Kind>('photo')
   const [theme, setTheme] = useState<Theme>(startTheme)
   // open beside the page on a wide screen; closed, as a drawer, on a phone
@@ -200,6 +299,11 @@ function App() {
       // storage refused: the details then last until the page is closed
     }
   }, [allFields])
+  useEffect(() => {
+    if (!busy) return
+    const timer = setInterval(() => setAside((index) => index + 1), ASIDE_MS)
+    return () => clearInterval(timer)
+  }, [busy])
   const fields = allFields[kind]
   const setFields = (next: SpecFields) => setAllFields({ ...allFields, [kind]: next })
   const [preview, setPreview] = useState<string | null>(null)
@@ -309,7 +413,7 @@ function App() {
       if (previous) URL.revokeObjectURL(previous)
       return null
     })
-    for (const ref of [sourceRef, maskRef, finalRef]) {
+    for (const ref of [sourceRef, maskRef, finalRef, beforeRef]) {
       ref.current!.width = 0
       ref.current!.height = 0
     }
@@ -420,6 +524,20 @@ function App() {
     return ctx
   }
 
+  /** The part of the photo that became the result, at the result's size, untouched. */
+  function drawBefore(image: ImageBitmap, box: Rect, spec: Spec) {
+    const before = beforeRef.current!
+    before.width = spec.widthPx
+    before.height = spec.heightPx
+    const ctx = before.getContext('2d')!
+    // the box can reach past the photo's edge; the result has the background colour there
+    ctx.fillStyle = spec.background
+    ctx.fillRect(0, 0, before.width, before.height)
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(image, box.x, box.y, box.width, box.height, 0, 0, before.width, before.height)
+    setSplit(50)
+  }
+
   /** Mask as a picture: kept pixels white, dropped pixels black. */
   function drawMask(mask: Float32Array, width: number, height: number) {
     const maskCanvas = maskRef.current!
@@ -492,6 +610,9 @@ function App() {
       widthPx: measured.widthPx,
       heightPx: measured.heightPx,
       extension,
+      bytes: measured.bytes,
+      minKb: spec.minKb,
+      maxKb: spec.maxKb,
       notes,
     })
     if (problems.length === 0) {
@@ -535,6 +656,7 @@ function App() {
         strokeRect(ctx, stages.ink, '#f59e0b')
         strokeRect(ctx, stages.box, '#2563eb')
         drawMask(stages.mask, image.width, image.height)
+        drawBefore(image, stages.box, spec)
         showResult(stages.final, stages.exported, spec)
         return
       }
@@ -575,6 +697,7 @@ function App() {
       ctx.stroke()
 
       drawMask(mask, image.width, image.height)
+      drawBefore(image, box, spec)
       showResult(final, exported, spec)
     } catch (error) {
       setInfo(`Something went wrong: ${error instanceof Error ? error.message : String(error)}`)
@@ -853,7 +976,7 @@ function App() {
             )}
           </aside>
 
-          <section aria-label="Result" className="card flex min-w-0 flex-col gap-4 p-5 xl:self-start">
+          <section aria-label="Result" className="card relative flex min-w-0 flex-col gap-4 overflow-hidden p-5 xl:self-start">
             <Step
               number={3}
               title="Download"
@@ -868,6 +991,9 @@ function App() {
                   {stage || 'Starting'}
                 </p>
                 <div className="nm-progress" />
+                <p key={aside} id="aside" className="nm-arrive text-soft text-xs italic">
+                  {ASIDES[kind][aside % ASIDES[kind].length]}
+                </p>
               </div>
             )}
             {failure && (
@@ -876,9 +1002,35 @@ function App() {
                 {failure}
               </p>
             )}
+            {summary?.valid && <Confetti key={download} />}
             <div className={summary ? 'flex flex-col gap-5 sm:flex-row sm:items-start' : 'hidden'}>
-              <div className="nm-inset flex-none self-start p-2">
-                <canvas ref={finalRef} className="block h-auto max-h-80 w-auto max-w-full rounded-lg" />
+              <div className="flex flex-none flex-col gap-2 self-start">
+                {/* drag across the picture to compare it with the photo it was made from */}
+                <div className="nm-inset p-2">
+                  <div id="compare" className="relative overflow-hidden rounded-lg">
+                    <canvas ref={finalRef} className="block h-auto max-h-80 w-auto max-w-full" />
+                    <canvas
+                      ref={beforeRef}
+                      className="pointer-events-none absolute inset-0 h-full w-full"
+                      style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}
+                    />
+                    <div className="nm-compare-line" style={{ left: `${split}%` }} aria-hidden="true" />
+                    <input
+                      id="compare-slider"
+                      className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={split}
+                      aria-label="Compare the result with the original: how much of the original to show"
+                      onChange={(e) => setSplit(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="text-soft flex justify-between px-1 text-xs font-semibold">
+                  <span>Before</span>
+                  <span>After</span>
+                </div>
               </div>
               {summary && (
                 <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -889,6 +1041,7 @@ function App() {
                     {summary.valid ? 'Ready to upload' : 'Does not meet the form yet'}
                   </p>
                   <Checklist checks={summary.checks} />
+                  <SizeMeter bytes={summary.bytes} minKb={summary.minKb} maxKb={summary.maxKb} />
                   <div className="flex flex-wrap gap-3">
                     {download && (
                       <a
