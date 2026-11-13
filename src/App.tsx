@@ -1,11 +1,19 @@
 import { useRef, useState } from 'react'
 import { processPhoto, type Quality } from './pipeline/process'
 import type { Spec } from './pipeline/types'
+import { DEFAULT_FIELDS, parseFields, type SpecFields } from './spec/fields'
+import { resolveSpec } from './spec/units'
+import { SpecForm } from './SpecForm'
 
-// Day 1 spec: 3.5 x 4.5 cm at 300 DPI, at most 50 KB, white background
-const SPEC: Spec = { widthPx: 413, heightPx: 531, maxKb: 50, format: 'jpg', background: '#ffffff' }
+/** The size limits as text, e.g. "20 to 50 KB". */
+function limitText(spec: Spec): string {
+  if (spec.minKb !== undefined && spec.maxKb !== undefined) return `${spec.minKb} to ${spec.maxKb} KB`
+  if (spec.maxKb !== undefined) return `max ${spec.maxKb} KB`
+  if (spec.minKb !== undefined) return `min ${spec.minKb} KB`
+  return 'none'
+}
 
-// Day 1 debug page: shows each pipeline stage as it is built. Replaced by the real UI later.
+// Debug page: shows each pipeline stage as it is built. Replaced by the real UI later.
 function App() {
   const sourceRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
@@ -15,11 +23,20 @@ function App() {
   const [warnings, setWarnings] = useState<string[]>([])
   const [download, setDownload] = useState<string | null>(null)
   const [quality, setQuality] = useState<Quality>('fast')
+  const [fields, setFields] = useState<SpecFields>(DEFAULT_FIELDS)
+  const [hasFile, setHasFile] = useState(false)
   const lastFile = useRef<File | undefined>(undefined)
+  const resolved = resolveSpec(parseFields(fields))
 
   async function onFile(file: File | undefined, mode: Quality) {
     if (!file) return
     lastFile.current = file
+    setHasFile(true)
+    if (!resolved.ok) {
+      setInfo('Fix the form details above first.')
+      return
+    }
+    const spec = resolved.spec
     setResultLine('')
     setWarnings([])
     setDownload((previous) => {
@@ -32,7 +49,7 @@ function App() {
     }
 
     try {
-      const { image, turns, faceCount, stages, timingsMs } = await processPhoto(file, SPEC, mode)
+      const { image, turns, faceCount, stages, timingsMs } = await processPhoto(file, spec, mode)
 
       const source = sourceRef.current!
       source.width = image.width
@@ -92,12 +109,14 @@ function App() {
       finalCanvas.getContext('2d')!.putImageData(final, 0, 0)
 
       if (!exported) {
-        setResultLine(`Cannot fit ${SPEC.widthPx} x ${SPEC.heightPx} px into ${SPEC.maxKb} KB at readable quality.`)
+        setResultLine(
+          `Cannot fit ${spec.widthPx} x ${spec.heightPx} px into ${spec.maxKb} KB at readable quality.`,
+        )
         return
       }
       const { bytes, quality, measured, problems } = exported
       const line =
-        `${(measured.bytes / 1000).toFixed(1)} KB (limit: max ${SPEC.maxKb} KB) | ` +
+        `${(measured.bytes / 1000).toFixed(1)} KB (limit: ${limitText(spec)}) | ` +
         `${measured.widthPx} x ${measured.heightPx} px | JPG | quality ${quality}`
       if (problems.length > 0) {
         setResultLine(`${line} | NOT VALID: ${problems.join('; ')}`)
@@ -114,6 +133,7 @@ function App() {
   return (
     <main className="mx-auto min-h-screen max-w-xl bg-white p-6 text-neutral-900">
       <h1 className="text-2xl font-semibold">Formify</h1>
+      <SpecForm fields={fields} resolved={resolved} onChange={setFields} />
       <input
         id="photo"
         className="mt-4 block"
@@ -134,6 +154,14 @@ function App() {
         />
         Finer hair edges (downloads a 26 MB model, slower)
       </label>
+      <button
+        id="create"
+        className="mt-3 rounded bg-neutral-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+        disabled={!hasFile || !resolved.ok}
+        onClick={() => onFile(lastFile.current, quality)}
+      >
+        Create again with these details
+      </button>
       <p className="mt-3 text-sm text-neutral-600">{info}</p>
       <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
       {resultLine && <p className="mt-3 font-mono text-sm">{resultLine}</p>}
