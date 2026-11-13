@@ -897,7 +897,12 @@ function App() {
             <img src="/favicon.svg" alt="" className="h-6 w-6" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xl leading-tight font-extrabold tracking-tight">Formify</p>
+            <p className="flex items-baseline gap-2 text-xl leading-tight font-extrabold tracking-tight">
+              Formify
+              <span id="version" className="text-soft text-xs font-semibold tracking-normal">
+                v{__APP_VERSION__}
+              </span>
+            </p>
             <h1 className="text-soft truncate text-sm font-semibold">{current.title}</h1>
           </div>
           {/* how many pictures everyone has made; each new one turns the cards over */}
@@ -1280,6 +1285,7 @@ function App() {
             >
               Source on GitHub
             </a>
+            {' · '}v{__APP_VERSION__}
           </p>
         </footer>
       </div>

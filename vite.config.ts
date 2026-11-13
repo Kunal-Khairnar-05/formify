@@ -1,7 +1,11 @@
 /// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
+
+// the version is written once, in package.json, and the page reads it from there
+const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
 
 /*
  * On Vercel the count is kept by the function in api/count.ts. The dev server has no
@@ -36,6 +40,7 @@ const devCounter: Plugin = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), devCounter],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   // onnxruntime-web and jSquash ship their own .wasm files; pre-bundling breaks their loaders
   optimizeDeps: { exclude: ['onnxruntime-web', '@jsquash/jpeg'] },
   // cross-origin isolation lets the WebAssembly runtimes use threads (SharedArrayBuffer)
