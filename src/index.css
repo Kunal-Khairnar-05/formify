@@ -114,6 +114,89 @@ body {
     animation: nm-slide 1.4s ease-in-out infinite;
   }
 
+  /* the file's size as a bar that fills towards the limit */
+  .nm-meter {
+    position: relative;
+    height: 0.625rem;
+    border-radius: 999px;
+    background: var(--track);
+    box-shadow:
+      inset 2px 2px 4px var(--shadow-dark),
+      inset -2px -2px 4px var(--shadow-light);
+  }
+
+  .nm-meter-fill {
+    height: 100%;
+    border-radius: inherit;
+    transform-origin: left;
+    animation: nm-fill 700ms ease-out both;
+  }
+
+  .nm-meter-mark {
+    position: absolute;
+    top: -0.1875rem;
+    bottom: -0.1875rem;
+    width: 2px;
+    background: var(--ink);
+  }
+
+  /* the line between "before" and "after", with a round grip */
+  .nm-compare-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: #ffffff;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+    pointer-events: none;
+  }
+
+  .nm-compare-line::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: -0.75rem 0 0 -0.75rem;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+  }
+
+  #compare:has(:focus-visible) {
+    outline: 2px solid var(--primary-dark);
+    outline-offset: 2px;
+  }
+
+  /* something that slides into place */
+  .nm-arrive {
+    animation: nm-arrive 320ms ease-out both;
+  }
+
+  /* a tick that pops */
+  .nm-pop {
+    display: inline-flex;
+    animation: nm-pop 360ms cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  }
+
+  .nm-confetti {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .nm-confetti span {
+    position: absolute;
+    top: -1rem;
+    height: 0.75rem;
+    border-radius: 2px;
+    opacity: 0;
+    animation: nm-fall 1700ms ease-in forwards;
+  }
+
   /* a panel that stands out of the page */
   .nm-raised {
     background: var(--bg);
@@ -411,6 +494,37 @@ body {
   }
 }
 
+@keyframes nm-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes nm-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes nm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+
+@keyframes nm-fall {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), 22rem) rotate(var(--turn));
+  }
+}
+
 @keyframes nm-slide {
   0% {
     transform: translateX(-100%);
@@ -445,5 +559,14 @@ body {
   .nm-spinner,
   .nm-progress::after {
     animation-duration: 3s;
+  }
+  /* no movement for those who ask for none: things simply appear, and no confetti */
+  .nm-arrive,
+  .nm-pop,
+  .nm-meter-fill {
+    animation: none;
+  }
+  .nm-confetti {
+    display: none;
   }
 }
