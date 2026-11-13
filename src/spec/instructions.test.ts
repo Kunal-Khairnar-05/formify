@@ -193,3 +193,46 @@ describe('findFormat', () => {
     expect(findFormat('Use the pngcrush tool')).toBeNull()
   })
 })
+
+describe('instructions written in other common ways', () => {
+  // text, then what should be read from it; a missing value means "not found"
+  const cases: [string, { size?: string; min?: string; max?: string; dpi?: string }][] = [
+    [
+      'Scanned photograph of 35mm width and 45mm height, 300 dpi, not exceeding 200 KB.',
+      { size: '35 x 45 mm', max: '200', dpi: '300' },
+    ],
+    [
+      'Photo size 4.5cm X 3.5cm, resolution 200 dpi, file must be at least 20 KB and at most 80 KB.',
+      { size: '4.5 x 3.5 cm', min: '20', max: '80', dpi: '200' },
+    ],
+    [
+      'Image dimension: 350px(W) x 450px(H); size 20-50 KB; format JPEG only',
+      { size: '350 x 450 px', min: '20', max: '50' },
+    ],
+    ['Dimension 450 (H) x 350 (W) pixels, max 100 KB', { size: '350 x 450 px', max: '100' }],
+    ['The photo should be 200 pixels wide and 230 pixels high.', { size: '200 x 230 px' }],
+    ['Image must be 4.5 cm in height and 3.5 cm in width', { size: '3.5 x 4.5 cm' }],
+    ['Height: 230 px, Width: 200 px, 300 dpi', { size: '200 x 230 px', dpi: '300' }],
+    ['Width 3.5 cm, height 4.5 cm at 200 dpi', { size: '3.5 x 4.5 cm', dpi: '200' }],
+    ['File size should be no more than 50 KB', { max: '50' }],
+    ['File size must be no less than 10 KB', { min: '10' }],
+    ['The file should not be larger than 300 kb', { max: '300' }],
+    ['Size must be greater than 20 KB', { min: '20' }],
+    ['Keep the file within 100 KB', { max: '100' }],
+    ['Image should be smaller than 2 MB', { max: '2048' }],
+    // a backwards "range" is not a range: 200 is the width, not a minimum
+    ['Photo width 200 and 50 KB maximum', { max: '50' }],
+    ['Signature 140 x 60 px, 10 KB minimum, 20 KB maximum', { size: '140 x 60 px', min: '10', max: '20' }],
+    // a height followed by a DPI must not take the DPI as the height
+    ['Signature of width 6 cm, 200 dpi', { dpi: '200' }],
+  ]
+
+  it.each(cases)('%s', (text, want) => {
+    const size = findSize(text)
+    expect(size ? `${size.width} x ${size.height}${size.unit ? ` ${size.unit}` : ''}` : undefined).toBe(want.size)
+    const limits = findKb(text)
+    expect(limits.minKb).toBe(want.min)
+    expect(limits.maxKb).toBe(want.max)
+    expect(findDpi(text) ?? undefined).toBe(want.dpi)
+  })
+})
