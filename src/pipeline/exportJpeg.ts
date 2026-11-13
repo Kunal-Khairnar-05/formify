@@ -31,7 +31,15 @@ export function minTarget(minKb: number, maxKb?: number): number {
   const wanted = Math.ceil(minKb * 1024 * MIN_SAFETY)
   if (maxKb === undefined) return wanted
   // stay under the same 5% margin that fitKb keeps below the maximum
-  return Math.min(wanted, Math.floor(maxKb * 1000 * 0.95))
+  const safeTop = Math.floor(maxKb * 1000 * 0.95)
+  if (wanted <= safeTop) return wanted
+
+  // the strict readings of both limits: 1024 bytes per KB for the minimum, 1000 for the maximum
+  const floor = Math.ceil(minKb * 1024)
+  const top = Math.floor(maxKb * 1000)
+  if (floor <= safeTop) return safeTop
+  // a very narrow range: no room for either margin, so aim for the middle of what is allowed
+  return floor <= top ? Math.floor((floor + top) / 2) : safeTop
 }
 
 /** Step 8: encode to the spec's size limits, then measure the result against the spec. */

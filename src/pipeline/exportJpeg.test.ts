@@ -17,11 +17,18 @@ describe('minTarget', () => {
     expect(minTarget(46, 50)).toBe(47_500)
   })
 
+  it('aims for the middle of a range too narrow for either margin', () => {
+    // allowed: 49,152 to 50,000 bytes
+    expect(minTarget(48, 50)).toBe(49_576)
+  })
+
   it('is always at or above the strict minimum when the range allows it', () => {
     for (const [min, max] of [
       [10, 20],
       [20, 50],
       [46, 50],
+      [48, 50],
+      [97, 100],
       [100, 200],
     ]) {
       expect(minTarget(min, max)).toBeGreaterThanOrEqual(min * 1024)

@@ -17,10 +17,12 @@ interface Props {
   onChange: (region: Region) => void
   /** Called with the photo's own pixel size once it has loaded. */
   onSize: (width: number, height: number) => void
+  /** Called when the browser cannot show the file as a picture. */
+  onError: () => void
 }
 
 /** The photo with a crop rectangle that can be moved and resized by its corners. */
-export function CropBox({ src, region, aspect, onChange, onSize }: Props) {
+export function CropBox({ src, region, aspect, onChange, onSize, onError }: Props) {
   const frame = useRef<HTMLDivElement>(null)
   const drag = useRef<{ handle: Handle; x: number; y: number; start: Region } | null>(null)
 
@@ -53,14 +55,15 @@ export function CropBox({ src, region, aspect, onChange, onSize }: Props) {
   })
 
   return (
-    <div ref={frame} className="relative mt-3 touch-none overflow-hidden select-none">
+    <div ref={frame} className="relative mx-auto w-fit max-w-full touch-none overflow-hidden rounded-xl select-none">
       <img
         id="crop-photo"
         src={src}
         alt="Your photo"
-        className="block h-auto w-full"
+        className="block h-auto max-h-[70vh] w-auto max-w-full"
         draggable={false}
         onLoad={(event) => onSize(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
+        onError={onError}
       />
       <div
         id="crop-region"

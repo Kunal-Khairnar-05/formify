@@ -1,20 +1,125 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CropBox } from './CropBox'
 import { fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
+import {
+  AlertIcon,
+  CheckIcon,
+  ChevronIcon,
+  CloseIcon,
+  DownloadIcon,
+  LockIcon,
+  MoonIcon,
+  PhotoIcon,
+  RotateIcon,
+  SidebarIcon,
+  SignatureIcon,
+  SparkIcon,
+  SunIcon,
+  UploadIcon,
+} from './icons'
 import type { Exported } from './pipeline/exportJpeg'
 import { processPhoto, type Quality } from './pipeline/process'
 import type { Rect, Spec } from './pipeline/types'
 import { processSignature } from './signature/process'
 import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from './spec/fields'
-import { resolveSpec } from './spec/units'
+import { cropCaution, resolveChecked } from './spec/feasibility'
 import { SpecForm } from './SpecForm'
 
 /** What is being made. Each kind has its own pipeline and its own form details. */
 type Kind = 'photo' | 'signature'
 
-const KINDS: { value: Kind; label: string }[] = [
-  { value: 'photo', label: 'Photo' },
-  { value: 'signature', label: 'Signature' },
+const KINDS = [
+  {
+    value: 'photo',
+    label: 'Photo',
+    Icon: PhotoIcon,
+    title: 'Passport-style photo',
+    lead: 'Turn a selfie into a photo that fits the form: right size, plain background, under the KB limit.',
+  },
+  {
+    value: 'signature',
+    label: 'Signature',
+    Icon: SignatureIcon,
+    title: 'Signature',
+    lead: 'Photograph your signature on paper and get clean ink on a plain background, at the size the form asks for.',
+  },
+] as const
+
+type Theme = 'light' | 'dark'
+
+/** The theme the page started with: set on <html> by the script in index.html. */
+const startTheme = (): Theme => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
+
+// from this width up the sidebar sits beside the page; below it, it slides over the page
+const WIDE = '(min-width: 1024px)'
+
+/** One line of the result's checklist: something the form asks for, and what the file has. */
+interface Check {
+  label: string
+  /** What the file measures. */
+  value: string
+  /** What the form asks for. */
+  wanted: string
+  ok: boolean
+}
+
+/** What the finished file measures, for the result card. */
+interface Summary {
+  /** True when the file meets everything the form asks for. */
+  valid: boolean
+  checks: Check[]
+  /** Used in the name of the downloaded file. */
+  widthPx: number
+  heightPx: number
+  /** Extra notes about how the file was made. */
+  notes: string[]
+}
+
+const STORE = 'formify-fields'
+
+const isFields = (value: unknown): value is SpecFields =>
+  typeof value === 'object' &&
+  value !== null &&
+  Object.keys(DEFAULT_FIELDS).every((key) => typeof (value as Record<string, unknown>)[key] === 'string')
+
+/** The form details from the last visit, so a returning user does not type them again. */
+function savedFields(): Record<Kind, SpecFields> {
+  const fresh = { photo: DEFAULT_FIELDS, signature: SIGNATURE_FIELDS }
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(STORE) ?? 'null')
+    if (typeof saved !== 'object' || saved === null) return fresh
+    const { photo, signature } = saved as Record<string, unknown>
+    return {
+      photo: isFields(photo) ? photo : fresh.photo,
+      signature: isFields(signature) ? signature : fresh.signature,
+    }
+  } catch {
+    // storage refused, or what was saved is not readable: start from the usual details
+    return fresh
+  }
+}
+
+const QUESTIONS = [
+  {
+    ask: 'Is my photo uploaded anywhere?',
+    answer:
+      'No. Everything runs in your browser on this device. The page downloads the models it needs, and your photo and the result never leave your device.',
+  },
+  {
+    ask: 'Will the portal accept the result?',
+    answer:
+      'Formify matches the dimensions, file size and format you enter, and warns about common reasons for rejection such as blur, a leaning head or uneven light. Each portal has its own rules, so check the result against its instructions.',
+  },
+  {
+    ask: 'Why is the first photo slower?',
+    answer:
+      'The first photo downloads about 13 MB of models. Your browser keeps them, so later photos start at once. Signatures need no models.',
+  },
+  {
+    ask: 'What kind of photo works best?',
+    answer:
+      'A recent front-facing photo in even light, with your whole head and the top of your shoulders in view and nobody else close to you. For a signature, dark ink on light paper.',
+  },
 ]
 
 /** The size limits as text, e.g. "20 to 50 KB". */
@@ -22,7 +127,7 @@ function limitText(spec: Spec): string {
   if (spec.minKb !== undefined && spec.maxKb !== undefined) return `${spec.minKb} to ${spec.maxKb} KB`
   if (spec.maxKb !== undefined) return `max ${spec.maxKb} KB`
   if (spec.minKb !== undefined) return `min ${spec.minKb} KB`
-  return 'none'
+  return 'no limit'
 }
 
 const timingText = (timingsMs: Record<string, number>) =>
@@ -30,22 +135,68 @@ const timingText = (timingsMs: Record<string, number>) =>
     .map(([name, ms]) => `${name} ${ms} ms`)
     .join(', ')
 
-// Debug page: shows each pipeline stage as it is built. Replaced by the real UI later.
+function Step({ number, title, hint }: { number: number; title: string; hint?: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="nm-step">{number}</span>
+      <div className="min-w-0">
+        <h2 className="text-base leading-tight font-bold">{title}</h2>
+        {hint && <p className="text-soft text-sm">{hint}</p>}
+      </div>
+    </div>
+  )
+}
+
+/** The result's checklist: what the form asks for beside what the file has. */
+function Checklist({ checks }: { checks: Check[] }) {
+  return (
+    <ul className="card divide-y divide-[var(--line)]">
+      {checks.map(({ label, value, wanted, ok }) => (
+        <li key={label} className="flex items-center gap-3 px-3 py-2.5">
+          <span className={ok ? 'nm-good' : 'nm-danger'}>{ok ? <CheckIcon /> : <AlertIcon />}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">{label}</p>
+            <p className="text-soft text-xs">{wanted}</p>
+          </div>
+          <p className="text-sm font-bold whitespace-nowrap tabular-nums">{value}</p>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function App() {
   const sourceRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
   const finalRef = useRef<HTMLCanvasElement>(null)
   const [kind, setKind] = useState<Kind>('photo')
-  const [info, setInfo] = useState('Choose a photo.')
-  const [resultLine, setResultLine] = useState('')
+  const [theme, setTheme] = useState<Theme>(startTheme)
+  // open beside the page on a wide screen; closed, as a drawer, on a phone
+  const [sidebar, setSidebar] = useState(() => window.matchMedia(WIDE).matches)
+  const [busy, setBusy] = useState(false)
+  // what the pipeline is doing right now, in words; shown while working
+  const [stage, setStage] = useState('')
+  // true while a file is held over the drop area
+  const [dragging, setDragging] = useState(false)
+  // what to do next, or what went wrong
+  const [info, setInfo] = useState('')
+  // how the last result was reached: sizes and timings, shown under "How this was made"
+  const [detail, setDetail] = useState('')
+  // set when there is no file to show, with the reason
+  const [failure, setFailure] = useState('')
+  const [summary, setSummary] = useState<Summary | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [download, setDownload] = useState<string | null>(null)
   const [quality, setQuality] = useState<Quality>('fast')
   // each kind keeps its own details, so switching back and forth loses nothing
-  const [allFields, setAllFields] = useState<Record<Kind, SpecFields>>({
-    photo: DEFAULT_FIELDS,
-    signature: SIGNATURE_FIELDS,
-  })
+  const [allFields, setAllFields] = useState<Record<Kind, SpecFields>>(savedFields)
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORE, JSON.stringify(allFields))
+    } catch {
+      // storage refused: the details then last until the page is closed
+    }
+  }, [allFields])
   const fields = allFields[kind]
   const setFields = (next: SpecFields) => setAllFields({ ...allFields, [kind]: next })
   const [preview, setPreview] = useState<string | null>(null)
@@ -56,7 +207,9 @@ function App() {
   // quarter turns used for the last signature, so Rotate can go one further; null before any
   const [signatureTurns, setSignatureTurns] = useState<number | null>(null)
   const lastFile = useRef<File | undefined>(undefined)
-  const resolved = resolveSpec(parseFields(fields))
+  const resolved = resolveChecked(parseFields(fields), kind)
+  const current = KINDS.find((entry) => entry.value === kind)!
+  const hasResult = summary !== null || failure !== ''
 
   // the crop is held to the output's shape unless the user switches that off
   // a signature is cut to its ink afterwards, so its crop box is always free-form
@@ -72,9 +225,27 @@ function App() {
   // a new output shape, or switching the lock, starts the crop again
   const region = custom && custom.aspect === aspect ? custom.region : startRegion
   const setRegion = (next: Region) => setCustom({ aspect, region: next })
+  // known before anything is made: whether the chosen part holds enough pixels
+  const tooSmall =
+    photoSize && resolved.ok && kind === 'photo'
+      ? cropCaution(region.width * photoSize.width, region.height * photoSize.height, resolved.spec)
+      : null
+
+  function switchTheme() {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try {
+      localStorage.setItem('formify-theme', next)
+    } catch {
+      // private windows may refuse storage; the theme then lasts until the page is closed
+    }
+    setTheme(next)
+  }
 
   function clearResult() {
-    setResultLine('')
+    setSummary(null)
+    setFailure('')
+    setDetail('')
     setWarnings([])
     setDownload((previous) => {
       if (previous) URL.revokeObjectURL(previous)
@@ -89,6 +260,10 @@ function App() {
   // choosing a photo only shows it for cropping; nothing is processed until Create is pressed
   function onPick(file: File | undefined) {
     if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setInfo(`${file.name} is not a picture. Choose a JPG or PNG file.`)
+      return
+    }
     lastFile.current = file
     setPreview((previous) => {
       if (previous) URL.revokeObjectURL(previous)
@@ -98,13 +273,43 @@ function App() {
     setCustom(null)
     setSignatureTurns(null)
     clearResult()
-    setInfo(`Move the box or drag its corners to crop, then press Create ${kind}.`)
+    setInfo('')
+  }
+
+  /** Put the picture and its result away, keeping the form details. */
+  function startOver() {
+    lastFile.current = undefined
+    setPreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous)
+      return null
+    })
+    setPhotoSize(null)
+    setCustom(null)
+    setSignatureTurns(null)
+    clearResult()
+    setInfo('')
+  }
+
+  // show the stage, then give the page a moment to paint it before the heavy work starts
+  const onStage = (next: string) => {
+    setStage(next)
+    // a tab in the background is not painted at all, and waiting for a frame there would
+    // hold the work up until the user comes back
+    if (document.hidden) return
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => setTimeout(resolve, 0))
+      // in case the tab is hidden while waiting
+      setTimeout(resolve, 100)
+    })
   }
 
   function onKind(next: Kind) {
     setKind(next)
     setSignatureTurns(null)
     clearResult()
+    setInfo('')
+    // on a phone the sidebar covers the page, so choosing from it puts it away
+    if (!window.matchMedia(WIDE).matches) setSidebar(false)
   }
 
   /** Draw the loaded image and hand back its context for the overlays. */
@@ -141,20 +346,48 @@ function App() {
     finalCanvas.getContext('2d')!.putImageData(final, 0, 0)
 
     if (!exported) {
-      setResultLine(
-        `Cannot fit ${spec.widthPx} x ${spec.heightPx} px into ${spec.maxKb} KB at readable quality.`,
+      setFailure(
+        `${spec.widthPx} x ${spec.heightPx} px cannot fit into ${spec.maxKb} KB at a readable quality. ` +
+          'Check the size and the KB limit against the portal.',
       )
       return
     }
     const { bytes, quality, paddedBytes, measured, problems } = exported
-    const line =
-      `${(measured.bytes / 1000).toFixed(1)} KB (limit: ${limitText(spec)}) | ` +
-      `${measured.widthPx} x ${measured.heightPx} px | JPG | quality ${quality}` +
-      (paddedBytes > 0 ? ` | padded by ${(paddedBytes / 1000).toFixed(1)} KB to reach the minimum` : '')
-    if (problems.length > 0) {
-      setResultLine(`${line} | NOT VALID: ${problems.join('; ')}`)
-    } else {
-      setResultLine(line)
+    // the same readings of 1 KB as the validator: 1000 bytes for a maximum, 1024 for a minimum
+    const sizeOk =
+      (spec.maxKb === undefined || measured.bytes <= spec.maxKb * 1000) &&
+      (spec.minKb === undefined || measured.bytes >= spec.minKb * 1024)
+    const notes = [`Saved at JPG quality ${quality}.`]
+    if (paddedBytes > 0) {
+      notes.push(`Padded by ${(paddedBytes / 1000).toFixed(1)} KB to reach the minimum size.`)
+    }
+    setSummary({
+      valid: problems.length === 0,
+      checks: [
+        {
+          label: 'Dimensions',
+          value: `${measured.widthPx} x ${measured.heightPx} px`,
+          wanted: `Form asks for ${spec.widthPx} x ${spec.heightPx} px`,
+          ok: measured.widthPx === spec.widthPx && measured.heightPx === spec.heightPx,
+        },
+        {
+          label: 'File size',
+          value: `${(measured.bytes / 1000).toFixed(1)} KB`,
+          wanted: `Form asks for ${limitText(spec)}`,
+          ok: sizeOk,
+        },
+        {
+          label: 'Format',
+          value: measured.format === 'jpg' ? 'JPG' : 'Unknown',
+          wanted: 'Form asks for JPG',
+          ok: measured.format === spec.format,
+        },
+      ],
+      widthPx: measured.widthPx,
+      heightPx: measured.heightPx,
+      notes,
+    })
+    if (problems.length === 0) {
       // copy into a fresh buffer: Blob does not accept a view over a shared one
       setDownload(URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/jpeg' })))
     }
@@ -166,28 +399,27 @@ function App() {
     ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
   }
 
-  /** `turns` overrides the guess of which way up a signature is. */
+  /** `forcedTurns` overrides the guess of which way up a signature is. */
   async function onCreate(forcedTurns?: number) {
     const file = lastFile.current
     if (!file || !resolved.ok) return
     const spec = resolved.spec
     const chosen = isFull(region) ? undefined : region
     const loaded = `${file.name}: ${(file.size / 1000).toFixed(0)} KB`
-    setInfo('Working...')
+    setBusy(true)
+    setInfo('')
     clearResult()
 
     try {
       if (kind === 'signature') {
-        const result = await processSignature(file, spec, chosen, forcedTurns)
+        const result = await processSignature(file, spec, chosen, forcedTurns, onStage)
         const { image, stages, timingsMs } = result
         setSignatureTurns(result.turns)
         const ctx = drawSource(image)
         const turned = result.turns === 0 ? '' : `, turned ${result.turns * 90} degrees`
-        setInfo(
-          `${loaded} -> ${image.width} x ${image.height} px${turned}. ${timingText(timingsMs)}`,
-        )
+        setDetail(`${loaded} -> ${image.width} x ${image.height} px${turned}. ${timingText(timingsMs)}`)
         if (!stages) {
-          setResultLine('No signature found. Use a photo of dark ink on plain, light paper.')
+          setFailure('No signature found. Use a photo of dark ink on plain, light paper.')
           return
         }
         setWarnings(stages.warnings)
@@ -204,16 +436,17 @@ function App() {
         spec,
         quality,
         chosen,
+        onStage,
       )
       const ctx = drawSource(image)
       const turned = turns === 0 ? '' : `, turned ${turns * 90} degrees`
-      setInfo(
+      setDetail(
         `${loaded} -> ${image.width} x ${image.height} px${turned}, ` +
           `${faceCount} face(s). ${timingText(timingsMs)}`,
       )
 
       if (!stages) {
-        setResultLine(
+        setFailure(
           faceCount === 0
             ? 'No face found. Use a front-facing photo.'
             : 'More than one face found. Use a photo with one person.',
@@ -236,116 +469,385 @@ function App() {
       drawMask(mask, image.width, image.height)
       showResult(final, exported, spec)
     } catch (error) {
-      setInfo(`Failed: ${error instanceof Error ? error.message : String(error)}`)
+      setInfo(`Something went wrong: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setBusy(false)
+      setStage('')
     }
   }
 
+  const toggle = 'flex items-center justify-between gap-3 text-sm font-medium'
+
   return (
-    <main className="mx-auto min-h-screen max-w-xl bg-white p-6 text-neutral-900">
-      <h1 className="text-2xl font-semibold">Formify</h1>
-      <div className="mt-4 flex gap-4 text-sm">
-        {KINDS.map(({ value, label }) => (
-          <label key={value} className="flex items-center gap-2">
-            <input
-              id={`kind-${value}`}
-              type="radio"
-              name="kind"
-              checked={kind === value}
-              onChange={() => onKind(value)}
-            />
-            {label}
-          </label>
-        ))}
-      </div>
-      <SpecForm fields={fields} resolved={resolved} onChange={setFields} />
-      <input
-        id="photo"
-        className="mt-4 block"
-        type="file"
-        accept="image/*"
-        onChange={(e) => onPick(e.target.files?.[0])}
-      />
-      {kind === 'photo' && (
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input
-            id="fine-edges"
-            type="checkbox"
-            checked={quality === 'fine'}
-            onChange={(e) => setQuality(e.target.checked ? 'fine' : 'fast')}
-          />
-          Finer hair edges (downloads a 26 MB model, slower)
-        </label>
-      )}
-      <button
-        id="create"
-        className="mt-3 rounded bg-neutral-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-        disabled={!preview || !resolved.ok}
-        onClick={() => onCreate()}
-      >
-        Create {kind}
-      </button>
-      {kind === 'signature' && signatureTurns !== null && (
-        <button
-          id="rotate"
-          className="mt-3 ml-3 rounded border border-neutral-400 px-3 py-2 text-sm"
-          onClick={() => onCreate((signatureTurns + 1) % 4)}
-        >
-          Rotate
-        </button>
-      )}
-      {preview && (
-        <button
-          id="crop-reset"
-          className="mt-3 ml-3 text-sm underline"
-          onClick={() => setCustom(null)}
-        >
-          Reset crop
-        </button>
-      )}
-      {preview && kind === 'photo' && (
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input
-            id="crop-lock"
-            type="checkbox"
-            checked={lockShape}
-            onChange={(e) => {
-              setLockShape(e.target.checked)
-              // switching to free-form keeps the box where it is
-              if (!e.target.checked) setCustom({ aspect: undefined, region })
-            }}
-          />
-          Keep the crop in the shape of the output
-        </label>
-      )}
-      {preview && (
-        <CropBox
-          src={preview}
-          region={region}
-          aspect={aspect}
-          onChange={setRegion}
-          onSize={(width, height) => setPhotoSize({ width, height })}
+    <div className="flex min-h-screen">
+      {/* on a phone the open sidebar covers the page; tapping beside it puts it away */}
+      {sidebar && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          aria-hidden="true"
+          onClick={() => setSidebar(false)}
         />
       )}
-      <p className="mt-3 text-sm text-neutral-600">{info}</p>
-      <canvas ref={finalRef} className="mt-3 border border-neutral-300" />
-      {resultLine && <p className="mt-3 font-mono text-sm">{resultLine}</p>}
-      {warnings.map((warning) => (
-        <p key={warning} className="mt-2 rounded bg-amber-100 px-3 py-2 text-sm text-amber-900">
-          {warning}
-        </p>
-      ))}
-      {download && (
-        <a
-          className="mt-3 inline-block rounded bg-blue-600 px-4 py-2 font-medium text-white"
-          href={download}
-          download={`formify-${kind}.jpg`}
-        >
-          Download
-        </a>
-      )}
-      <canvas ref={sourceRef} className="mt-6 h-auto max-w-full border border-neutral-300" />
-      <canvas ref={maskRef} className="mt-3 h-auto max-w-full border border-neutral-300" />
-    </main>
+
+      <aside
+        id="sidebar"
+        aria-label="Sidebar"
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col gap-6 border-r border-[var(--line)] bg-[var(--bg)] p-4 transition-[width,transform] duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
+          sidebar ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-[4.75rem]'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <span className="card flex h-11 w-11 flex-none items-center justify-center">
+            <img src="/favicon.svg" alt="" className="h-6 w-6" />
+          </span>
+          {sidebar && (
+            <div className="min-w-0 flex-1">
+              <p className="text-lg leading-tight font-extrabold tracking-tight">Formify</p>
+              <p className="text-soft text-xs font-medium">Form-ready in a minute</p>
+            </div>
+          )}
+          <button
+            className="nm-btn nm-btn-icon lg:hidden"
+            aria-label="Close sidebar"
+            onClick={() => setSidebar(false)}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <nav aria-label="What to make" className="flex flex-col gap-2">
+          {sidebar && <p className="text-soft px-3 text-xs font-bold tracking-wide">CREATE</p>}
+          {KINDS.map(({ value, label, Icon }) => (
+            <label
+              key={value}
+              className={`nm-nav ${sidebar ? '' : 'justify-center !px-0'}`}
+              title={sidebar ? undefined : label}
+            >
+              <input
+                id={`kind-${value}`}
+                className="sr-only"
+                type="radio"
+                name="kind"
+                checked={kind === value}
+                onChange={() => onKind(value)}
+              />
+              <Icon />
+              <span className={sidebar ? '' : 'sr-only'}>{label}</span>
+            </label>
+          ))}
+        </nav>
+
+        <div className="mt-auto flex flex-col gap-3">
+          {sidebar && (
+            <div className="card flex gap-3 p-3">
+              <LockIcon />
+              <p className="text-xs leading-relaxed font-medium">
+                <span className="font-bold">Private by design.</span> Your photo is processed in this
+                browser and is never uploaded.
+              </p>
+            </div>
+          )}
+          <button
+            id="theme"
+            className={`nm-btn ${sidebar ? 'justify-start' : 'nm-btn-icon self-center'}`}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={switchTheme}
+          >
+            {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+            {sidebar && (theme === 'dark' ? 'Light mode' : 'Dark mode')}
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center gap-4 px-4 pt-4 sm:px-8 sm:pt-6">
+          <button
+            id="sidebar-toggle"
+            className="nm-btn nm-btn-icon"
+            aria-label={sidebar ? 'Collapse sidebar' : 'Open sidebar'}
+            aria-expanded={sidebar}
+            aria-controls="sidebar"
+            onClick={() => setSidebar(!sidebar)}
+          >
+            <SidebarIcon />
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-xl leading-tight font-extrabold tracking-tight sm:text-2xl">
+              {current.title}
+            </h1>
+            <p className="text-soft hidden text-sm sm:block">{current.lead}</p>
+          </div>
+          <p className="card ml-auto hidden flex-none items-center gap-2 !rounded-full px-3 py-1.5 text-xs font-bold md:flex">
+            <LockIcon size={16} />
+            On-device
+          </p>
+        </header>
+
+        {/* on a phone: picture, form, result, in that order; on a wide screen the form sits on the right */}
+        <main className="grid flex-1 content-start gap-6 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,1fr)_23rem] xl:grid-rows-[auto_auto_auto]">
+          <section aria-label="Your picture" className="card flex min-w-0 flex-col gap-4 p-5">
+            <Step
+              number={1}
+              title={kind === 'photo' ? 'Add your photo' : 'Add a photo of your signature'}
+              hint={
+                preview
+                  ? 'Drag the box or its corners to choose the part to use.'
+                  : kind === 'photo'
+                    ? 'A front-facing photo in even light works best.'
+                    : 'Dark ink on light paper works best. Ruled paper is fine.'
+              }
+            />
+            <div
+              className={`nm-inset nm-drop p-3 ${dragging ? 'outline-2 outline-offset-2 outline-[var(--primary-dark)]' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragging(true)
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragging(false)
+                onPick(e.dataTransfer.files[0])
+              }}
+            >
+              {preview ? (
+                <CropBox
+                  src={preview}
+                  region={region}
+                  aspect={aspect}
+                  onChange={setRegion}
+                  onSize={(width, height) => setPhotoSize({ width, height })}
+                  onError={() => {
+                    const name = lastFile.current?.name ?? 'That file'
+                    startOver()
+                    setInfo(`${name} could not be opened as a picture. Choose a JPG or PNG file.`)
+                  }}
+                />
+              ) : (
+                <label
+                  htmlFor="photo"
+                  className="flex min-h-64 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--shadow-dark)] p-6 text-center"
+                >
+                  <span className="card flex h-14 w-14 items-center justify-center">
+                    <UploadIcon size={26} />
+                  </span>
+                  <span className="text-base font-bold">
+                    {dragging ? 'Drop it to add it' : 'Choose a file or drop it here'}
+                  </span>
+                  <span className="text-soft text-sm">JPG or PNG, from your phone or computer</span>
+                </label>
+              )}
+              <input
+                id="photo"
+                className="sr-only"
+                type="file"
+                accept="image/*"
+                onChange={(e) => onPick(e.target.files?.[0])}
+              />
+            </div>
+            {tooSmall && (
+              <p id="crop-caution" className="nm-note">
+                <AlertIcon />
+                {tooSmall}
+              </p>
+            )}
+            {preview && (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                <label htmlFor="photo" className="nm-btn">
+                  <UploadIcon size={18} />
+                  Change photo
+                </label>
+                <button id="crop-reset" className="nm-btn" onClick={() => setCustom(null)}>
+                  Reset crop
+                </button>
+                {kind === 'photo' && (
+                  <label className={toggle}>
+                    <input
+                      id="crop-lock"
+                      className="nm-switch"
+                      type="checkbox"
+                      checked={lockShape}
+                      onChange={(e) => {
+                        setLockShape(e.target.checked)
+                        // switching to free-form keeps the box where it is
+                        if (!e.target.checked) setCustom({ aspect: undefined, region })
+                      }}
+                    />
+                    Keep the crop in the output's shape
+                  </label>
+                )}
+              </div>
+            )}
+          </section>
+
+          <aside
+            aria-label="Form requirements"
+            className="card flex flex-col gap-5 p-5 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start"
+          >
+            <Step number={2} title="What the form asks for" hint="Copy these from the portal." />
+            <SpecForm kind={kind} fields={fields} resolved={resolved} onChange={setFields} />
+            {kind === 'photo' && (
+              <label className={toggle}>
+                <span>
+                  Finer hair edges
+                  <span className="text-soft block text-xs font-medium">
+                    Downloads a 26 MB model once; a little slower.
+                  </span>
+                </span>
+                <input
+                  id="fine-edges"
+                  className="nm-switch"
+                  type="checkbox"
+                  checked={quality === 'fine'}
+                  onChange={(e) => setQuality(e.target.checked ? 'fine' : 'fast')}
+                />
+              </label>
+            )}
+            <button
+              id="create"
+              className="nm-btn nm-btn-primary w-full !min-h-12 !text-base"
+              disabled={!preview || !resolved.ok || busy}
+              onClick={() => onCreate()}
+            >
+              {busy ? <span className="nm-spinner" /> : <SparkIcon />}
+              {busy ? 'Working' : `Create ${kind}`}
+            </button>
+            {!preview && <p className="text-soft -mt-2 text-center text-xs">Add a photo first.</p>}
+            {info && (
+              <p id="info" className="nm-danger -mt-2 text-sm font-medium">
+                {info}
+              </p>
+            )}
+          </aside>
+
+          <section aria-label="Result" className="card flex min-w-0 flex-col gap-4 p-5 xl:self-start">
+            <Step
+              number={3}
+              title="Download"
+              hint={
+                hasResult || busy ? undefined : 'Your finished file appears here, checked against the form.'
+              }
+            />
+            {busy && (
+              <div id="progress" role="status" className="flex flex-col gap-3">
+                <p className="flex items-center gap-2.5 text-sm font-semibold">
+                  <span className="nm-spinner" />
+                  {stage || 'Starting'}
+                </p>
+                <div className="nm-progress" />
+              </div>
+            )}
+            {failure && (
+              <p className="nm-note">
+                <AlertIcon />
+                {failure}
+              </p>
+            )}
+            <div className={summary ? 'flex flex-col gap-5 sm:flex-row sm:items-start' : 'hidden'}>
+              <div className="nm-inset flex-none self-start p-2">
+                <canvas ref={finalRef} className="block h-auto max-h-80 w-auto max-w-full rounded-lg" />
+              </div>
+              {summary && (
+                <div className="flex min-w-0 flex-1 flex-col gap-4">
+                  <p
+                    className={`flex items-center gap-2 text-base font-bold ${summary.valid ? 'nm-good' : 'nm-danger'}`}
+                  >
+                    {summary.valid ? <CheckIcon /> : <AlertIcon />}
+                    {summary.valid ? 'Ready to upload' : 'Does not meet the form yet'}
+                  </p>
+                  <Checklist checks={summary.checks} />
+                  <div className="flex flex-wrap gap-3">
+                    {download && (
+                      <a
+                        className="nm-btn nm-btn-primary"
+                        href={download}
+                        download={`formify-${kind}-${summary.widthPx}x${summary.heightPx}.jpg`}
+                      >
+                        <DownloadIcon />
+                        Download
+                      </a>
+                    )}
+                    {kind === 'signature' && signatureTurns !== null && (
+                      <button
+                        id="rotate"
+                        className="nm-btn"
+                        disabled={busy}
+                        onClick={() => onCreate((signatureTurns + 1) % 4)}
+                      >
+                        <RotateIcon size={18} />
+                        Rotate
+                      </button>
+                    )}
+                    <button id="start-over" className="nm-btn" disabled={busy} onClick={startOver}>
+                      Start over
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {warnings.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-bold">Check before you upload</p>
+                {warnings.map((warning) => (
+                  <p key={warning} className="nm-note">
+                    <AlertIcon />
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            )}
+            {/* how the result was reached: what was found in the photo, and the cut-out */}
+            <details className={hasResult ? 'text-sm' : 'hidden'}>
+              <summary className="flex w-fit items-center gap-1.5 rounded-md font-semibold">
+                How this was made
+                <span className="chevron">
+                  <ChevronIcon size={16} />
+                </span>
+              </summary>
+              {summary?.notes.map((note) => (
+                <p key={note} className="text-soft mt-3">
+                  {note}
+                </p>
+              ))}
+              <p className="text-soft mt-3">{detail}</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <canvas ref={sourceRef} className="h-auto w-full rounded-lg" />
+                <canvas ref={maskRef} className="h-auto w-full rounded-lg" />
+              </div>
+            </details>
+          </section>
+
+          <section aria-label="Common questions" className="flex min-w-0 flex-col gap-3 xl:col-span-2">
+            <h2 className="text-base font-bold">Common questions</h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              {QUESTIONS.map(({ ask, answer }) => (
+                <details key={ask} className="card self-start px-4 py-3">
+                  <summary className="flex items-center justify-between gap-3 rounded-md text-sm font-semibold">
+                    {ask}
+                    <span className="chevron">
+                      <ChevronIcon size={18} />
+                    </span>
+                  </summary>
+                  <p className="text-soft mt-2 text-sm leading-relaxed">{answer}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+        </main>
+
+        <footer className="text-soft flex flex-wrap items-center justify-between gap-2 px-4 pb-6 text-xs sm:px-8">
+          <p>Formify. Check the result against your portal's own instructions before you upload.</p>
+          <a
+            className="font-semibold underline underline-offset-2"
+            href="https://github.com/Kunal-Khairnar-05/formify"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Source on GitHub
+          </a>
+        </footer>
+      </div>
+    </div>
   )
 }
 
