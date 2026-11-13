@@ -1,13 +1,16 @@
 import { dilate } from '../pipeline/gate'
-import { cropAndResize } from '../pipeline/resize'
 import type { Rect } from '../pipeline/types'
 
 // a stroke should stay at least about this many pixels wide in the output
-const MIN_OUTPUT_STROKE = 1.4
+const MIN_OUTPUT_STROKE = 1.8
 // ink colours are taken from pixels that are at least this much ink
 const SOLID = 0.8
 // how much darker than the photographed ink the output ink is drawn (1 = unchanged)
-const DARKEN = 0.75
+const DARKEN = 0.6
+// mask values from here up are drawn as solid ink
+const SOLID_FROM = 0.5
+// how much a part-covered edge pixel is strengthened, so thin strokes do not look grey
+const BOOST = 1.25
 
 /** Turn any CSS colour into RGB bytes. */
 function toRgb(colour: string): [number, number, number] {
@@ -70,21 +73,61 @@ export function thickenBy(shrink: number, stroke: number): number {
 }
 
 /**
- * Push a soft edge towards ink or paper: below 0.3 becomes 0, above 0.7 becomes 1, with a
- * smooth step between. Shrinking a picture averages each stroke with the paper beside it,
- * which is what makes small signatures look blurred; this undoes most of that.
+ * Resize one rectangle of a 0..1 map to the output size by averaging: every output pixel is
+ * the mean of exactly the source area it covers, part-covered pixels counted in part. This
+ * is what gives a small picture smooth edges without blur; skipping source pixels, as a
+ * quick resize does, is what makes thin strokes look broken and jagged. Outside the map
+ * counts as 0.
  */
-export function sharpen(alpha: number): number {
-  const t = Math.min(1, Math.max(0, (alpha - 0.3) / 0.4))
-  return t * t * (3 - 2 * t)
+export function resizeArea(
+  values: Float32Array,
+  width: number,
+  height: number,
+  box: Rect,
+  outWidth: number,
+  outHeight: number,
+): Float32Array {
+  // for each output position along one axis: the source pixels it covers and their weights
+  const spans = (start: number, size: number, count: number, limit: number) => {
+    const step = size / count
+    // when enlarging, an output pixel covers less than one source pixel; a one-pixel
+    // window around its centre then blends neighbours smoothly instead of copying one
+    const reach = Math.max(step, 1)
+    return Array.from({ length: count }, (_, i) => {
+      const from = start + (i + 0.5) * step - reach / 2
+      const to = from + reach
+      const parts: [index: number, weight: number][] = []
+      for (let k = Math.floor(from); k < to; k++) {
+        const weight = (Math.min(k + 1, to) - Math.max(k, from)) / reach
+        if (weight > 0 && k >= 0 && k < limit) parts.push([k, weight])
+      }
+      return parts
+    })
+  }
+  const columns = spans(box.x, box.width, outWidth, width)
+  const rows = spans(box.y, box.height, outHeight, height)
+
+  const out = new Float32Array(outWidth * outHeight)
+  for (let oy = 0; oy < outHeight; oy++) {
+    for (let ox = 0; ox < outWidth; ox++) {
+      let sum = 0
+      for (const [y, wy] of rows[oy]) {
+        let line = 0
+        for (const [x, wx] of columns[ox]) line += values[y * width + x] * wx
+        sum += line * wy
+      }
+      out[oy * outWidth + ox] = sum
+    }
+  }
+  return out
 }
 
 /**
  * Redraw the signature as one ink colour on the background colour, at the output size.
  * The photographed ink is uneven and greyed by the paper showing through its edges; one
- * colour, slightly darkened, reads clearly at the small sizes forms ask for. The strokes
- * are thickened before a large shrink so they do not fade, and the shape of the ink is
- * resized on its own and sharpened, so the edges stay crisp.
+ * solid colour, slightly darkened, reads clearly at the small sizes forms ask for. The
+ * strokes are thickened before a large shrink so they do not fade, and the shape of the ink
+ * is shrunk by averaging, which keeps the edges smooth.
  */
 export async function drawSignature(
   pixels: ImageData,
@@ -96,25 +139,17 @@ export async function drawSignature(
 ): Promise<ImageData> {
   const { width, height } = pixels
   const grow = thickenBy(box.width / outWidth, strokeWidth(mask, width, height))
-  const alpha = grow > 0 ? dilate(mask, width, height, grow) : mask
-
-  // the shape of the ink as a grey picture: black ink on white, so it can be resized
-  const shape = new ImageData(width, height)
-  for (let i = 0; i < alpha.length; i++) {
-    const v = 255 * (1 - alpha[i])
-    shape.data[i * 4] = v
-    shape.data[i * 4 + 1] = v
-    shape.data[i * 4 + 2] = v
-    shape.data[i * 4 + 3] = 255
-  }
-  const small = await cropAndResize(shape, box, outWidth, outHeight, '#ffffff')
+  const grown = grow > 0 ? dilate(mask, width, height, grow) : mask
+  // anything at least half ink becomes solid, so a stroke is one even tone, not patchy
+  const solid = grown.map((v) => Math.min(1, v / SOLID_FROM))
+  const alpha = resizeArea(solid, width, height, box, outWidth, outHeight)
 
   const [bgR, bgG, bgB] = toRgb(background)
   const [inkR, inkG, inkB] = (inkColour(pixels.data, mask) ?? [0, 0, 0]).map((v) => v * DARKEN)
 
   const out = new ImageData(outWidth, outHeight)
   for (let i = 0; i < outWidth * outHeight; i++) {
-    const a = sharpen(1 - small.data[i * 4] / 255)
+    const a = Math.min(1, alpha[i] * BOOST)
     const o = i * 4
     out.data[o] = inkR * a + bgR * (1 - a)
     out.data[o + 1] = inkG * a + bgG * (1 - a)
