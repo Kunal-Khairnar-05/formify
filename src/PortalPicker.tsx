@@ -56,16 +56,25 @@ export function PortalPicker({ portal, kind, onChoose }: Props) {
             <span>
               Filled in for {portal.edition}
               <span className="text-soft block text-xs font-medium">
-                Photo and signature are both set. Switch between them in the sidebar.
+                {portal.photo
+                  ? 'Photo and signature are both set. Switch between them in the sidebar.'
+                  : 'Only the signature is set: this portal has no photo to upload.'}
               </span>
             </span>
           </p>
-          <p>
-            <span className="text-soft text-xs font-bold tracking-wide">
-              THE {kind === 'photo' ? 'PHOTO' : 'SIGNATURE'} RULE
-            </span>
-            <span className="block font-medium">{portal[kind].rule}</span>
-          </p>
+          {portal[kind] ? (
+            <p>
+              <span className="text-soft text-xs font-bold tracking-wide">
+                THE {kind === 'photo' ? 'PHOTO' : 'SIGNATURE'} RULE
+              </span>
+              <span className="block font-medium">{portal[kind].rule}</span>
+            </p>
+          ) : (
+            <p id="portal-no-photo" className="nm-note">
+              <AlertIcon />
+              {portal.noPhoto}
+            </p>
+          )}
           {portal.notes.map((note) => (
             <p key={note} className="flex items-start gap-2 text-xs font-medium">
               <AlertIcon size={16} />

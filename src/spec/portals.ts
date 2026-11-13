@@ -31,7 +31,10 @@ export interface Portal {
   name: string
   /** Which exam cycle or document the numbers are for. */
   edition: string
-  photo: PortalPicture
+  /** null when the portal takes the photo itself and has no photo to upload. */
+  photo: PortalPicture | null
+  /** Shown in place of the photo's rule when there is no photo to upload. */
+  noPhoto?: string
   signature: PortalPicture
   source: { title: string; url: string }
   /** The day the source was read, as YYYY-MM-DD. */
@@ -125,6 +128,63 @@ export const PORTALS: Portal[] = [
     ],
   },
   {
+    id: 'neet-ug-2026',
+    name: 'NEET UG',
+    edition: 'NEET (UG) 2026 (NTA information bulletin)',
+    photo: {
+      fields: passportPhoto('10', '200'),
+      rule: 'JPG, passport size, 80% face with ears visible, white background, 10 to 200 KB. No pixel size is given.',
+    },
+    signature: {
+      // the bulletin gives no size for the signature; this is a common shape for one
+      fields: inPixels(350, 150, '10', '100'),
+      rule: 'JPG, 10 to 100 KB. No size in pixels or cm is given.',
+    },
+    source: {
+      title: 'Information Bulletin: NEET (UG) 2026',
+      url: 'https://cdnbbsr.s3waas.gov.in/s37bc1ec1d9c3426357e69acd5bf320061/uploads/2026/02/202602081576322299.pdf',
+    },
+    checkedOn: '2026-11-14',
+    confirmed: 'read',
+    notes: [
+      'The bulletin sets no pixel size, so the sizes here are a sensible choice, not a rule. If the upload page asks for a size, use that.',
+      'The face, ears included and without a mask, must fill about 80% of the photo.',
+      'The form also asks for finger and thumb impressions, which Formify does not make, and the bulletin asks you to carry printed postcard-size photos to the centre.',
+    ],
+  },
+  {
+    id: 'ssc-cgl-2026',
+    name: 'SSC (CGL)',
+    edition: 'SSC Combined Graduate Level Examination, 2026 (notice of 21 May 2026)',
+    photo: null,
+    noPhoto:
+      'There is no photo to upload. The SSC form takes your photo live, through its own page or app, and rejects a photo of an existing photograph.',
+    signature: {
+      // about 6.0 x 2.0 cm; the notice gives no DPI, and 200 is the least a scan should be
+      fields: {
+        width: '6',
+        height: '2',
+        unit: 'cm',
+        dpi: '200',
+        minKb: '10',
+        maxKb: '20',
+        format: 'jpg',
+        background: WHITE,
+      },
+      rule: 'JPG, about 6.0 cm wide x 2.0 cm high, 10 to 20 KB.',
+    },
+    source: {
+      title: 'SSC: Notice of Combined Graduate Level Examination, 2026 (paragraph 9.6)',
+      url: 'https://ssc.gov.in/api/attachment/uploads/masterData/NoticeBoards/Notice_of_adv_cgl_2025.pdf?mode=light',
+    },
+    checkedOn: '2026-11-14',
+    confirmed: 'read',
+    notes: [
+      'The notice disagrees with itself: paragraph 9.6 says about 6.0 x 2.0 cm, and its annexure on filling the form says about 4.0 x 2.0 cm. This uses 6.0 x 2.0 cm. If the upload is refused, try 4 x 2 cm.',
+      'Other SSC exams in 2026 (CHSL, CAPF, Stenographer) were seen to use the same signature rule in search excerpts, but only the CGL notice was read.',
+    ],
+  },
+  {
     id: 'upsc',
     name: 'UPSC',
     edition: 'UPSC online application (One Time Registration FAQ)',
@@ -180,11 +240,18 @@ export const PORTALS: Portal[] = [
 const same = (a: SpecFields, b: SpecFields) =>
   (Object.keys(a) as (keyof SpecFields)[]).every((key) => a[key] === b[key])
 
-/** The portal whose details are in both forms exactly as it fills them, if any. */
-export function matchPortal(fields: { photo: SpecFields; signature: SpecFields }): Portal | null {
-  return (
-    PORTALS.find(
-      (portal) => same(portal.photo.fields, fields.photo) && same(portal.signature.fields, fields.signature),
-    ) ?? null
-  )
+/**
+ * The chosen portal, as long as both forms still hold exactly what it filled in; null once
+ * a detail has been changed by hand, or when none was chosen. The choice is kept by id and
+ * not worked out from the numbers, because two exams can ask for the very same numbers.
+ */
+export function chosenPortal(
+  id: string | null,
+  fields: { photo: SpecFields; signature: SpecFields },
+): Portal | null {
+  const portal = PORTALS.find((entry) => entry.id === id)
+  if (!portal) return null
+  // a portal with no photo to upload says nothing about the photo's details
+  const photoKept = portal.photo === null || same(portal.photo.fields, fields.photo)
+  return photoKept && same(portal.signature.fields, fields.signature) ? portal : null
 }
