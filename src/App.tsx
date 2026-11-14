@@ -1054,6 +1054,7 @@ function App() {
             <PortalPicker
               portal={portal}
               kind={kind}
+              onClear={() => setPortalId(null)}
               // an exam sets the photo's and the signature's details together
               onChoose={(chosen) => {
                 setPortalId(chosen.id)

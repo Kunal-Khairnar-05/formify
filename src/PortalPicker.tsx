@@ -12,6 +12,8 @@ interface Props {
   /** What is being made, to show that picture's rule. */
   kind: 'photo' | 'signature'
   onChoose: (portal: Portal) => void
+  /** Go back to no exam. The numbers in the form stay as they are, for the user to change. */
+  onClear: () => void
 }
 
 /**
@@ -19,7 +21,7 @@ interface Props {
  * rule, where it came from and when it was checked, because these rules change every year
  * and the user is the one who pays for a wrong number.
  */
-export function PortalPicker({ portal, kind, onChoose }: Props) {
+export function PortalPicker({ portal, kind, onChoose, onClear }: Props) {
   return (
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1.5 text-sm font-semibold">
@@ -32,9 +34,11 @@ export function PortalPicker({ portal, kind, onChoose }: Props) {
             onChange={(e) => {
               const chosen = PORTALS.find((entry) => entry.id === e.target.value)
               if (chosen) onChoose(chosen)
+              // the first line of the list: no exam
+              else onClear()
             }}
           >
-            <option value={OWN}>{portal ? 'My own numbers' : 'Choose one, or type your own numbers below'}</option>
+            <option value={OWN}>{portal ? 'No exam: use my own numbers' : 'Choose one, or type your own numbers below'}</option>
             {PORTALS.map((entry) => (
               <option key={entry.id} value={entry.id}>
                 {entry.name}
@@ -93,6 +97,9 @@ export function PortalPicker({ portal, kind, onChoose }: Props) {
             </a>{' '}
             on {day(portal.checkedOn)}. Rules change every year: check your own notice before you upload.
           </p>
+          <button id="portal-clear" className="nm-btn !min-h-9 self-start !text-xs" onClick={onClear}>
+            Remove this exam
+          </button>
         </div>
       )}
     </div>
