@@ -28,6 +28,10 @@ export interface PortalPicture {
  */
 export interface Portal {
   id: string
+  /** The exam's own page on this site: /gate. Kept from year to year, so links to it last. */
+  slug: string
+  /** The exam with its year, as a heading: GATE 2026. */
+  title: string
   name: string
   /** Which exam cycle or document the numbers are for. */
   edition: string
@@ -77,6 +81,8 @@ const inPixels = (width: number, height: number, minKb: string, maxKb: string): 
 export const PORTALS: Portal[] = [
   {
     id: 'gate-2026',
+    slug: 'gate',
+    title: 'GATE 2026',
     name: 'GATE',
     edition: 'GATE 2026 (IIT Guwahati)',
     photo: {
@@ -104,6 +110,8 @@ export const PORTALS: Portal[] = [
   },
   {
     id: 'jee-main-2027',
+    slug: 'jee-main',
+    title: 'JEE Main 2027',
     name: 'JEE Main',
     edition: 'JEE (Main) 2027 (NTA information bulletin)',
     photo: {
@@ -129,6 +137,8 @@ export const PORTALS: Portal[] = [
   },
   {
     id: 'neet-ug-2026',
+    slug: 'neet-ug',
+    title: 'NEET UG 2026',
     name: 'NEET UG',
     edition: 'NEET (UG) 2026 (NTA information bulletin)',
     photo: {
@@ -154,6 +164,8 @@ export const PORTALS: Portal[] = [
   },
   {
     id: 'ssc-cgl-2026',
+    slug: 'ssc-cgl',
+    title: 'SSC CGL 2026',
     name: 'SSC (CGL)',
     edition: 'SSC Combined Graduate Level Examination, 2026 (notice of 21 May 2026)',
     photo: null,
@@ -186,6 +198,8 @@ export const PORTALS: Portal[] = [
   },
   {
     id: 'upsc',
+    slug: 'upsc',
+    title: 'UPSC',
     name: 'UPSC',
     edition: 'UPSC online application (One Time Registration FAQ)',
     photo: {
@@ -213,6 +227,8 @@ export const PORTALS: Portal[] = [
   },
   {
     id: 'ibps-sbi',
+    slug: 'ibps-sbi',
+    title: 'IBPS and SBI',
     name: 'IBPS and SBI',
     edition: 'IBPS-run bank recruitment forms (2025 and 2026 notices)',
     photo: {

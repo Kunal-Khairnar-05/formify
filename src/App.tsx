@@ -27,7 +27,8 @@ import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from '
 import type { Measured } from './spec/estimate'
 import { badFields, cropCaution, resolveChecked, suggest } from './spec/feasibility'
 import { PortalPicker } from './PortalPicker'
-import { chosenPortal } from './spec/portals'
+import { pageWords, pathFor, portalForPath } from './spec/pages'
+import { chosenPortal, PORTALS, type Portal } from './spec/portals'
 import { SpecForm } from './SpecForm'
 import { Cancelled, cancelAll, run } from './worker/client'
 
@@ -142,6 +143,9 @@ function savedFields(): Record<Kind, SpecFields> {
     return fresh
   }
 }
+
+/** The exam whose own page (/gate) the visitor arrived on, if any: the app opens set up for it. */
+const LANDED = portalForPath(window.location.pathname)
 
 const QUESTIONS = [
   {
@@ -349,7 +353,7 @@ function App() {
   const [split, setSplit] = useState(50)
   // which of the playful lines is showing while working
   const [aside, setAside] = useState(0)
-  const [kind, setKind] = useState<Kind>('photo')
+  const [kind, setKind] = useState<Kind>(LANDED && !LANDED.photo ? 'signature' : 'photo')
   const [theme, setTheme] = useState<Theme>(startTheme)
   // open beside the page on a wide screen; closed, as a drawer, on a phone
   const [sidebar, setSidebar] = useState(() => window.matchMedia(WIDE).matches)
@@ -380,7 +384,11 @@ function App() {
   const [download, setDownload] = useState<string | null>(null)
   const [quality, setQuality] = useState<Quality>('fast')
   // each kind keeps its own details, so switching back and forth loses nothing
-  const [allFields, setAllFields] = useState<Record<Kind, SpecFields>>(savedFields)
+  const [allFields, setAllFields] = useState<Record<Kind, SpecFields>>(() => {
+    const saved = savedFields()
+    // an exam's own page fills both forms, as choosing the exam from the list does
+    return LANDED ? { photo: LANDED.photo?.fields ?? saved.photo, signature: LANDED.signature.fields } : saved
+  })
   useEffect(() => {
     try {
       localStorage.setItem(STORE, JSON.stringify(allFields))
@@ -397,6 +405,7 @@ function App() {
   const setFields = (next: SpecFields) => setAllFields({ ...allFields, [kind]: next })
   // the exam chosen from the list; it stops counting once a detail is changed by hand
   const [portalId, setPortalId] = useState<string | null>(() => {
+    if (LANDED) return LANDED.id
     try {
       return localStorage.getItem(PORTAL_STORE)
     } catch {
@@ -412,6 +421,17 @@ function App() {
     }
   }, [portalId])
   const portal = chosenPortal(portalId, allFields)
+  // an exam sets the photo's and the signature's details together
+  const choosePortal = (chosen: Portal) => {
+    setPortalId(chosen.id)
+    // a portal with no photo to upload leaves the photo's details as they are
+    setAllFields({ photo: chosen.photo?.fields ?? allFields.photo, signature: chosen.signature.fields })
+  }
+  // the address and the tab's title follow the exam, so the page can be shared as it stands
+  useEffect(() => {
+    document.title = portal ? pageWords(portal).title : 'Formify'
+    if (portalForPath(window.location.pathname) !== portal) window.history.replaceState(null, '', pathFor(portal))
+  }, [portal])
   const [preview, setPreview] = useState<string | null>(null)
   // the user's own crop, with the shape it was made for; null means the starting crop
   const [custom, setCustom] = useState<{ aspect?: number; region: Region } | null>(null)
@@ -1081,15 +1101,7 @@ function App() {
               portal={portal}
               kind={kind}
               onClear={() => setPortalId(null)}
-              // an exam sets the photo's and the signature's details together
-              onChoose={(chosen) => {
-                setPortalId(chosen.id)
-                // a portal with no photo to upload leaves the photo's details as they are
-                setAllFields({
-                  photo: chosen.photo?.fields ?? allFields.photo,
-                  signature: chosen.signature.fields,
-                })
-              }}
+              onChoose={choosePortal}
             />
             <SpecForm
               kind={kind}
@@ -1313,6 +1325,24 @@ function App() {
 
         <footer className="text-soft flex flex-wrap items-center justify-between gap-2 px-4 pb-6 text-xs sm:px-8">
           <p>Check the result against your portal's own instructions before you upload.</p>
+          {/* real links, so each exam's page can be found and shared; a click stays on this page */}
+          <nav id="exam-links" aria-label="Exam pages" className="flex flex-wrap gap-x-3 gap-y-1 font-semibold">
+            {PORTALS.map((entry) => (
+              <a
+                key={entry.id}
+                href={pathFor(entry)}
+                className="underline underline-offset-2"
+                aria-current={portal === entry ? 'page' : undefined}
+                onClick={(event) => {
+                  event.preventDefault()
+                  choosePortal(entry)
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+              >
+                {entry.title}
+              </a>
+            ))}
+          </nav>
         </footer>
       </div>
     </div>

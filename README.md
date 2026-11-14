@@ -35,6 +35,9 @@ Formify does the whole job in one place and uploads nothing.
   and pads the file when the form also sets a minimum. JPG, PNG and (for signatures) SVG.
 - **Exam presets.** Pick an exam and the numbers are filled in, each with a link to the
   official page it was read from.
+- **A page for each exam.** [/gate](https://formify-five-rust.vercel.app/gate),
+  [/neet-ug](https://formify-five-rust.vercel.app/neet-ug) and the rest open the app already set
+  up for that exam: one link to pass on.
 - **Paste the instructions.** Paste a form's own wording ("JPG, 200 x 230 px, 20 to 50 KB")
   and the fields are filled from it.
 - **Says no early.** A request that cannot be met (say, 1000 x 1000 px in 5 KB) is marked in
@@ -198,12 +201,12 @@ hashed, for one minute to stop a script inflating the number.
 | `src/App.tsx`, `src/*.tsx` | The page: form, exam picker, crop box, result card, counter |
 | `src/pipeline/` | Photo pipeline: load, orient, landmarks, segment, composite, crop, encode, validate |
 | `src/signature/` | Signature pipeline: ink, ruled lines, straighten, paint, trace to SVG |
-| `src/spec/` | The form's rules: units, exam presets, instruction parser, what is possible |
+| `src/spec/` | The form's rules: units, exam presets and their pages, instruction parser, what is possible |
 | `src/worker/` | The Web Worker, its message protocol, and the client that talks to it |
 | `src/counter/`, `api/count.ts` | The counter: logic, browser client, and the Vercel function |
 | `public/sw.js` | The service worker |
 | `public/models/` | Model files and `models.json` |
-| `scripts/` | Copies the runtimes, fetches and slims models, draws the icons |
+| `scripts/` | Copies the runtimes, fetches and slims models, draws the icons, writes each exam's page and the sitemap after a build |
 | `MODELS.md` | Source, licence and checksum of every model, and the WebGPU measurements |
 
 ## Credits
