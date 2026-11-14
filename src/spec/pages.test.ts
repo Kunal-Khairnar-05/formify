@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { examHtml, HOME, homeHtml, pageWords, pathFor, portalForPath, sitemap, SITE } from './pages'
+import { examHtml, HOME, homeHtml, pageWords, quickHead, pathFor, portalForPath, sitemap, SITE } from './pages'
 import { PORTALS } from './portals'
 
 const HOME_PAGE = `<!doctype html>
@@ -141,6 +141,32 @@ describe('homeHtml', () => {
 
   it('links to every exam page', () => {
     for (const portal of PORTALS) expect(html).toContain(`<a href="/${portal.slug}">`)
+  })
+})
+
+describe('quickHead', () => {
+  const built = '<head><link rel="stylesheet" crossorigin href="/assets/index-abc.css"></head>'
+  const html = quickHead(built, 'p{color:red}', '/assets/font-abc.woff2')
+
+  it('writes the styles into the page in place of the link to them', () => {
+    expect(html).toContain('<style>p{color:red}</style>')
+    expect(html).not.toContain('rel="stylesheet"')
+  })
+
+  it('asks for the font at once', () => {
+    expect(html).toContain('<link rel="preload" href="/assets/font-abc.woff2" as="font" type="font/woff2" crossorigin />')
+  })
+
+  it('keeps a "$" in the styles as it is', () => {
+    expect(quickHead(built, "a::after{content:'$&'}", '/f.woff2')).toContain("content:'$&'")
+  })
+
+  it('does not let the styles close their own element', () => {
+    expect(quickHead(built, 'a{}</style><b>', '/f.woff2')).not.toContain('</style><b>')
+  })
+
+  it('refuses a page with no stylesheet', () => {
+    expect(() => quickHead('<head></head>', '', '/f.woff2')).toThrow()
   })
 })
 
