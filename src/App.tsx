@@ -253,6 +253,13 @@ function Confetti() {
 }
 
 const PROFILE = 'https://github.com/Kunal-Khairnar-05'
+/** Where a pointer at `clientX` sits across `element`, as a whole percentage from 0 to 100. */
+function splitAt(element: HTMLElement, clientX: number): number {
+  const { left, width } = element.getBoundingClientRect()
+  if (width === 0) return 50
+  return Math.round(Math.min(1, Math.max(0, (clientX - left) / width)) * 100)
+}
+
 // how long the stamp is given to land before a tap moves on to the profile
 const STAMP_MS = 700
 
@@ -1168,7 +1175,23 @@ function App() {
               <div className={`flex flex-none flex-col gap-2 self-start ${summary?.vector ? 'hidden' : ''}`}>
                 {/* drag across the picture to compare it with the photo it was made from */}
                 <div className="nm-inset p-2">
-                  <div id="compare" className="relative overflow-hidden rounded-lg">
+                  {/*
+                   * The drag is read here, not from the slider below. A phone moves a slider
+                   * only when the finger starts on its small thumb, which is invisible here.
+                   * touch-pan-y: a sideways drag compares, an up-and-down one still scrolls.
+                   */}
+                  <div
+                    id="compare"
+                    className="relative cursor-ew-resize touch-pan-y overflow-hidden rounded-lg select-none"
+                    onPointerDown={(event) => {
+                      event.currentTarget.setPointerCapture(event.pointerId)
+                      setSplit(splitAt(event.currentTarget, event.clientX))
+                    }}
+                    onPointerMove={(event) => {
+                      if (event.currentTarget.hasPointerCapture(event.pointerId))
+                        setSplit(splitAt(event.currentTarget, event.clientX))
+                    }}
+                  >
                     <canvas ref={finalRef} className="block h-auto max-h-80 w-auto max-w-full" />
                     <canvas
                       ref={beforeRef}
@@ -1176,9 +1199,10 @@ function App() {
                       style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}
                     />
                     <div className="nm-compare-line" style={{ left: `${split}%` }} aria-hidden="true" />
+                    {/* for the keyboard and screen readers; the pointer is handled above */}
                     <input
                       id="compare-slider"
-                      className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
+                      className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
                       type="range"
                       min={0}
                       max={100}
