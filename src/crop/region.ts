@@ -103,3 +103,36 @@ export function regionToPixels(region: Region, width: number, height: number): R
     height: clamp(Math.round(region.height * height), 1, height - y),
   }
 }
+
+/**
+ * Splits a draw of `box` (which may reach past the picture's edge) into the part of it that
+ * lies inside a `width` x `height` picture and where that part lands in an `outWidth` x
+ * `outHeight` frame. Null when no part of the box is inside.
+ *
+ * Canvas is meant to do this clipping itself, but Safari draws nothing at all when the
+ * source box leaves the picture, so it is done here.
+ */
+export function clipDraw(
+  box: Rect,
+  width: number,
+  height: number,
+  outWidth: number,
+  outHeight: number,
+): { source: Rect; target: Rect } | null {
+  const left = Math.max(0, box.x)
+  const top = Math.max(0, box.y)
+  const right = Math.min(width, box.x + box.width)
+  const bottom = Math.min(height, box.y + box.height)
+  if (right <= left || bottom <= top) return null
+  const scaleX = outWidth / box.width
+  const scaleY = outHeight / box.height
+  return {
+    source: { x: left, y: top, width: right - left, height: bottom - top },
+    target: {
+      x: (left - box.x) * scaleX,
+      y: (top - box.y) * scaleY,
+      width: (right - left) * scaleX,
+      height: (bottom - top) * scaleY,
+    },
+  }
+}
