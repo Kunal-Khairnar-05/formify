@@ -860,15 +860,29 @@ function App() {
         </nav>
 
         <div className="mt-auto flex flex-col gap-3">
-          {sidebar && (
-            <div className="card flex gap-3 p-3">
-              <LockIcon />
+          {/* a green lock; pointing at it, or reaching it with the keyboard or a tap, shows the note */}
+          <div id="privacy" className={`group relative ${sidebar ? 'self-start' : 'self-center'}`}>
+            <button
+              type="button"
+              className="flex cursor-help items-center gap-2 rounded-lg px-1 py-1 text-xs font-bold"
+              aria-describedby="privacy-note"
+            >
+              <span className="text-[var(--good)]">
+                <LockIcon />
+              </span>
+              <span className={sidebar ? '' : 'sr-only'}>Private by design</span>
+            </button>
+            <div
+              id="privacy-note"
+              role="tooltip"
+              className="card pointer-events-none invisible absolute bottom-full left-0 z-50 mb-2 w-56 translate-y-1 p-3 opacity-0 shadow-lg transition duration-150 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+            >
               <p className="text-xs leading-relaxed font-medium">
                 <span className="font-bold">Private by design.</span> Your photo is processed in this
                 browser and is never uploaded.
               </p>
             </div>
-          )}
+          </div>
           {sidebar && (
             <SignedCredit />
           )}
