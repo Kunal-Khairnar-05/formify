@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clipDraw,
   dragRegion,
   fitRegion,
   fractionAspect,
@@ -172,5 +173,32 @@ describe('regionToPixels', () => {
     expect(rect.width).toBeGreaterThanOrEqual(1)
     expect(rect.height).toBeGreaterThanOrEqual(1)
     expect(rect.x + rect.width).toBeLessThanOrEqual(5)
+  })
+})
+
+describe('clipDraw', () => {
+  it('leaves a box inside the picture as it is', () => {
+    expect(clipDraw({ x: 10, y: 20, width: 100, height: 200 }, 400, 400, 50, 100)).toEqual({
+      source: { x: 10, y: 20, width: 100, height: 200 },
+      target: { x: 0, y: 0, width: 50, height: 100 },
+    })
+  })
+
+  it('cuts a box that starts above the picture, and moves the drawing down to match', () => {
+    expect(clipDraw({ x: 0, y: -50, width: 100, height: 200 }, 100, 400, 100, 200)).toEqual({
+      source: { x: 0, y: 0, width: 100, height: 150 },
+      target: { x: 0, y: 50, width: 100, height: 150 },
+    })
+  })
+
+  it('cuts a box that runs past the right and bottom edges', () => {
+    expect(clipDraw({ x: 300, y: 300, width: 200, height: 200 }, 400, 400, 100, 100)).toEqual({
+      source: { x: 300, y: 300, width: 100, height: 100 },
+      target: { x: 0, y: 0, width: 50, height: 50 },
+    })
+  })
+
+  it('gives nothing for a box wholly outside', () => {
+    expect(clipDraw({ x: 500, y: 0, width: 100, height: 100 }, 400, 400, 100, 100)).toBeNull()
   })
 })

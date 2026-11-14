@@ -3,7 +3,7 @@ import { fetchTotals, reportMade } from './counter/client'
 import type { Totals } from './counter/server'
 import { CropBox } from './CropBox'
 import { FlipCounter } from './FlipCounter'
-import { fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
+import { clipDraw, fitRegion, fractionAspect, FULL, isFull, type Region } from './crop/region'
 import {
   AlertIcon,
   CheckIcon,
@@ -629,7 +629,12 @@ function App() {
     ctx.fillStyle = spec.background
     ctx.fillRect(0, 0, before.width, before.height)
     ctx.imageSmoothingQuality = 'high'
-    ctx.drawImage(image, box.x, box.y, box.width, box.height, 0, 0, before.width, before.height)
+    // only the part of the box inside the photo is drawn: Safari draws nothing otherwise
+    const part = clipDraw(box, image.width, image.height, before.width, before.height)
+    if (part) {
+      const { source: s, target: t } = part
+      ctx.drawImage(image, s.x, s.y, s.width, s.height, t.x, t.y, t.width, t.height)
+    }
     setSplit(50)
   }
 
