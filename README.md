@@ -214,6 +214,11 @@ hashed, for one minute to stop a script inflating the number.
 - Logos in the system design diagram are from [Simple Icons](https://simpleicons.org/) and
   belong to their owners.
 
+## Licence
+
+The code is under the [MIT licence](LICENSE). The model files keep their own licences
+(Apache-2.0), listed in [MODELS.md](MODELS.md).
+
 ## Author
 
 Developed by [Kunal Khairnar](https://github.com/Kunal-Khairnar-05).
