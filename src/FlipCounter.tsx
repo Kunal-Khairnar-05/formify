@@ -45,7 +45,11 @@ export function FlipCounter({ value, label }: { value: number; label: string }) 
   const text = value.toLocaleString('en-IN')
   const characters = [...text]
   return (
-    <p id="made-count" className="flex flex-none items-center gap-2.5" aria-label={`${text} ${label}`}>
+    <p id="made-count" className="flex flex-none items-center gap-2.5">
+      {/* the number in words a screen reader can say; the cards and the label beside them are hidden from it */}
+      <span className="sr-only">
+        {text} {label}
+      </span>
       <span className="flex items-center gap-0.5">
         {characters.map((character, index) => {
           // counted from the right, so a card keeps its place when the number grows a digit

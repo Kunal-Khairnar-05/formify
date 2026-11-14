@@ -149,6 +149,20 @@ export function homeHtml(built: string): string {
   ])
 }
 
+/**
+ * The built page, made quicker to show. The stylesheet is a separate file the browser must
+ * fetch before it paints anything; it is small, so it is written into the page instead.
+ * The text font is asked for at once, rather than when the styles are first applied.
+ */
+export function quickHead(built: string, css: string, fontHref: string): string {
+  const sheet = /<link rel="stylesheet"[^>]*>/
+  if (!sheet.test(built)) throw new Error('the built page has no stylesheet to write in')
+  const preload = `<link rel="preload" href="${fontHref}" as="font" type="font/woff2" crossorigin />`
+  // nothing in the styles may close the style element early
+  const safe = css.replace(/<\/style/gi, '<\\/style')
+  return built.replace(sheet, () => `${preload}\n    <style>${safe}</style>`)
+}
+
 /** Every page of the site, for search engines. */
 export function sitemap(today: string): string {
   const urls = ['/', ...PORTALS.map(pathFor)]
