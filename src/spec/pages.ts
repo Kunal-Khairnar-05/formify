@@ -51,43 +51,102 @@ export function pageWords(portal: Portal): PageWords {
   }
 }
 
+/** What the home page says, in its head and to a reader without JavaScript. */
+export const HOME: PageWords = {
+  path: '/',
+  title: 'Formify: exam form photo and signature, resized to the exact KB',
+  description:
+    'Turn a selfie and a photo of your signature into files that fit your exam form: the exact size, KB and format, on a white background. Free, runs in your browser, and nothing is uploaded.',
+  heading: 'Formify: photo and signature for exam application forms',
+  rules: [],
+}
+
+/** The picture a shared link is shown with, 1200 x 630. */
+const PREVIEW = '/preview.png'
+
 const escape = (text: string) =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+/** What the page is, in the form search engines read: a free app that runs in a browser. */
+function structured(words: PageWords): string {
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: 'Formify',
+    url: SITE + words.path,
+    description: words.description,
+    applicationCategory: 'MultimediaApplication',
+    operatingSystem: 'Any',
+    browserRequirements: 'Requires JavaScript and WebAssembly',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'INR' },
+  }
+  // "<" is written as an escape, so nothing in the words can close the script element
+  return JSON.stringify(data).replace(/</g, '\\u003c')
+}
+
+/** Links to every page, so each can be reached from each without running a script. */
+const links = (current: string) =>
+  [{ path: '/', text: 'Formify home' }, ...PORTALS.map((portal) => ({ path: pathFor(portal), text: portal.title }))]
+    .filter((link) => link.path !== current)
+    .map((link) => `<a href="${link.path}">${escape(link.text)}</a>`)
+    .join(' | ')
+
 /**
- * The built home page, turned into an exam's page: its own title, description and address
- * in the head, and the exam's rules as plain HTML inside the root element. The app replaces
- * that HTML when it starts, and shows the same rules itself; until then, and for a reader
- * that runs no script, the page still says what it is about.
+ * The built page with one page's words written into it: title, description, its own
+ * address, what a shared link shows, and `body` as plain HTML inside the root element.
+ * The app replaces that HTML when it starts; until then, and for a reader that runs no
+ * script, the page still says what it is about.
  */
-export function examHtml(home: string, portal: Portal): string {
-  const words = pageWords(portal)
+function pageHtml(built: string, words: PageWords, body: string[]): string {
   const url = SITE + words.path
   const head = [
     `<link rel="canonical" href="${url}" />`,
     `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="Formify" />`,
     `<meta property="og:title" content="${escape(words.title)}" />`,
     `<meta property="og:description" content="${escape(words.description)}" />`,
     `<meta property="og:url" content="${url}" />`,
-    `<meta property="og:image" content="${SITE}/icon-512.png" />`,
+    `<meta property="og:image" content="${SITE}${PREVIEW}" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<script type="application/ld+json">${structured(words)}</script>`,
   ].join('\n    ')
-  const body = [
+  const inside = [
     `<h1>${escape(words.heading)}</h1>`,
+    ...body,
+    `<p>Formify makes these files in your browser. Nothing is uploaded.</p>`,
+    `<nav>${links(words.path)}</nav>`,
+  ].join('\n      ')
+
+  // replacements are given as functions, so a "$" in the words is not read as a pattern
+  const swapped = built
+    .replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escape(words.title)}</title>\n    ${head}`)
+    .replace(
+      /<meta\s+name="description"[\s\S]*?\/>/,
+      () => `<meta name="description" content="${escape(words.description)}" />`,
+    )
+    .replace('<div id="root"></div>', () => `<div id="root">\n      ${inside}\n    </div>`)
+  if (!swapped.includes(head) || !swapped.includes(inside)) throw new Error('the built page is not shaped as expected')
+  return swapped
+}
+
+/** The built page, turned into an exam's page, with the exam's rules, notes and source. */
+export function examHtml(built: string, portal: Portal): string {
+  const words = pageWords(portal)
+  return pageHtml(built, words, [
     ...words.rules.map((rule) => `<p><strong>${rule.label}:</strong> ${escape(rule.text)}</p>`),
     ...portal.notes.map((note) => `<p>${escape(note)}</p>`),
     `<p>Source: <a href="${escape(portal.source.url)}">${escape(portal.source.title)}</a>, checked on ${portal.checkedOn}.</p>`,
-    `<p>Formify makes these files in your browser. Nothing is uploaded.</p>`,
-  ].join('\n      ')
+  ])
+}
 
-  const swapped = home
-    .replace(/<title>[\s\S]*?<\/title>/, `<title>${escape(words.title)}</title>\n    ${head}`)
-    .replace(
-      /<meta\s+name="description"[\s\S]*?\/>/,
-      `<meta name="description" content="${escape(words.description)}" />`,
-    )
-    .replace('<div id="root"></div>', `<div id="root">\n      ${body}\n    </div>`)
-  if (swapped === home || !swapped.includes(body)) throw new Error('the home page is not shaped as expected')
-  return swapped
+/** The built page, as the home page. */
+export function homeHtml(built: string): string {
+  return pageHtml(built, HOME, [
+    `<p>${escape(HOME.description)}</p>`,
+    `<p>Removes the background, crops to the form's shape, and fits the file between the form's minimum and maximum KB, as JPG or PNG. A signature is lifted off its paper and can be saved as an SVG.</p>`,
+  ])
 }
 
 /** Every page of the site, for search engines. */

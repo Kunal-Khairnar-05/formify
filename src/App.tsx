@@ -27,7 +27,7 @@ import { DEFAULT_FIELDS, parseFields, SIGNATURE_FIELDS, type SpecFields } from '
 import type { Measured } from './spec/estimate'
 import { badFields, cropCaution, resolveChecked, suggest } from './spec/feasibility'
 import { PortalPicker } from './PortalPicker'
-import { pageWords, pathFor, portalForPath } from './spec/pages'
+import { HOME, pageWords, pathFor, portalForPath } from './spec/pages'
 import { chosenPortal, PORTALS, type Portal } from './spec/portals'
 import { SpecForm } from './SpecForm'
 import { Cancelled, cancelAll, run } from './worker/client'
@@ -429,7 +429,7 @@ function App() {
   }
   // the address and the tab's title follow the exam, so the page can be shared as it stands
   useEffect(() => {
-    document.title = portal ? pageWords(portal).title : 'Formify'
+    document.title = portal ? pageWords(portal).title : HOME.title
     if (portalForPath(window.location.pathname) !== portal) window.history.replaceState(null, '', pathFor(portal))
   }, [portal])
   const [preview, setPreview] = useState<string | null>(null)
@@ -952,7 +952,10 @@ function App() {
           />
           <div className="min-w-0 flex-1">
             <p className="text-xl leading-tight font-extrabold tracking-tight">Formify</p>
-            <h1 className="text-soft truncate text-sm font-semibold">{current.title}</h1>
+            {/* on an exam's page the heading names the exam: GATE 2026: signature */}
+            <h1 id="page-heading" className="text-soft truncate text-sm font-semibold">
+              {portal ? `${portal.title}: ${kind}` : current.title}
+            </h1>
           </div>
           {/* how many pictures everyone has made; each new one turns the cards over */}
           {made && made.total > 0 && (

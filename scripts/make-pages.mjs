@@ -11,9 +11,11 @@ import { createServer } from 'vite'
 const out = 'dist'
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
 try {
-  const { examHtml, sitemap, ROBOTS } = await vite.ssrLoadModule('/src/spec/pages.ts')
+  const { examHtml, homeHtml, sitemap, ROBOTS } = await vite.ssrLoadModule('/src/spec/pages.ts')
   const { PORTALS } = await vite.ssrLoadModule('/src/spec/portals.ts')
+  // the page as Vite built it: every page, the home page too, is made from this
   const home = readFileSync(join(out, 'index.html'), 'utf8')
+  writeFileSync(join(out, 'index.html'), homeHtml(home))
   for (const portal of PORTALS) {
     mkdirSync(join(out, portal.slug), { recursive: true })
     writeFileSync(join(out, portal.slug, 'index.html'), examHtml(home, portal))

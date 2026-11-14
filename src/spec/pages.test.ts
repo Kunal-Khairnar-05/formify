@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { examHtml, pageWords, pathFor, portalForPath, sitemap, SITE } from './pages'
+import { examHtml, HOME, homeHtml, pageWords, pathFor, portalForPath, sitemap, SITE } from './pages'
 import { PORTALS } from './portals'
 
-const HOME = `<!doctype html>
+const HOME_PAGE = `<!doctype html>
 <html lang="en">
   <head>
     <meta
@@ -74,7 +74,7 @@ describe('pageWords', () => {
 })
 
 describe('examHtml', () => {
-  const html = examHtml(HOME, gate)
+  const html = examHtml(HOME_PAGE, gate)
 
   it('swaps the title and the description, leaving one of each', () => {
     expect(html.match(/<title>/g)).toHaveLength(1)
@@ -99,11 +99,48 @@ describe('examHtml', () => {
 
   it('escapes what could be read as HTML', () => {
     const odd = { ...gate, notes: ['Width < height & "quoted"'] }
-    expect(examHtml(HOME, odd)).toContain('Width &lt; height &amp; &quot;quoted&quot;')
+    expect(examHtml(HOME_PAGE, odd)).toContain('Width &lt; height &amp; &quot;quoted&quot;')
+  })
+
+  it('links to the home page and to every other exam, but not to itself', () => {
+    expect(html).toContain('<a href="/">Formify home</a>')
+    expect(html).toContain('<a href="/neet-ug">NEET UG 2026</a>')
+    expect(html).not.toContain('<a href="/gate">')
+  })
+
+  it('says what it is in structured data that parses, with its own address', () => {
+    const data = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)![1]) as Record<string, unknown>
+    expect(data['@type']).toBe('WebApplication')
+    expect(data.url).toBe(`${SITE}/gate`)
+  })
+
+  it('cannot have its structured data closed by the words in it', () => {
+    const odd = { ...gate, signature: { ...gate.signature, rule: '</script><b>' } }
+    const json = examHtml(HOME_PAGE, odd).match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)![1]
+    expect((JSON.parse(json) as { description: string }).description).toContain('</script><b>')
+  })
+
+  it('gives a shared link a picture', () => {
+    expect(html).toContain(`<meta property="og:image" content="${SITE}/preview.png" />`)
   })
 
   it('refuses a home page it cannot change', () => {
     expect(() => examHtml('<html></html>', gate)).toThrow()
+  })
+})
+
+describe('homeHtml', () => {
+  const html = homeHtml(HOME_PAGE)
+
+  it('has the home title, its own address, and one of each', () => {
+    expect(html).toContain(`<title>${HOME.title}</title>`)
+    expect(html).toContain(`<link rel="canonical" href="${SITE}/" />`)
+    expect(html.match(/<title>/g)).toHaveLength(1)
+    expect(html.match(/name="description"/g)).toHaveLength(1)
+  })
+
+  it('links to every exam page', () => {
+    for (const portal of PORTALS) expect(html).toContain(`<a href="/${portal.slug}">`)
   })
 })
 
