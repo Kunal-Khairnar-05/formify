@@ -99,7 +99,7 @@ Measured on the live site and a production build, on a desktop with Chrome.
 
 | What | Value |
 | --- | --- |
-| Main script | 87 KB gzipped |
+| Main script | 88 KB gzipped |
 | Download before the first photo (runtimes and models, compressed) | 14.5 MB, once |
 | Download on a later visit | nothing: served from the cache |
 | A photo, once the models are warm | about 1.7 s |
